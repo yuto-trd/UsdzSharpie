@@ -3,6 +3,7 @@ using K4os.Compression.LZ4.Streams;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -575,6 +576,8 @@ namespace UsdzSharpie
 
         private UsdcNode[] nodes;
 
+        private List<LiveFieldSet> liveFieldSets;
+
 
         private bool SupportsArray(UsdcField.ValueTypeId valueType)
         {
@@ -735,9 +738,7 @@ namespace UsdzSharpie
 
                 Logger.LogLine($"value.token = {token}");
 
-                //value->SetToken(token);
-
-                return null;
+                return token;
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeString)
             {
@@ -1245,27 +1246,81 @@ namespace UsdzSharpie
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeInt)
             {
-                if (!field.IsArray)
+                if (field.IsArray)
                 {
-                    throw new Exception($"Non array is not accepted for type {field.Type}");
+                    var values = ReadIntArray(binaryReader, field.IsCompressed);
+                    for (var i = 0; i < values.Length; i++)
+                    {
+                        Logger.LogLine($"Int[{i}] = {values[i]}");
+                    }
+                    return values;
                 }
-
-                var values = ReadIntArray(binaryReader, field.IsCompressed);
-                for (var i = 0; i < values.Length; i++)
+                else
                 {
-                    Logger.LogLine($"Int[{i}] = {values[i]}");
+                    var value = binaryReader.ReadInt32();
+                    Logger.LogLine($"Int = {value}");
+                    return value;
                 }
-
-                //if (rep.IsArray())
-                //{
-                //    value->SetIntArray(v.data(), v.size());
-                //}
-                //else
-                //{
-                //    value->SetInt(v[0]);
-                //}
-
-                return null;
+            }
+            else if (field.Type == UsdcField.ValueTypeId.ValueTypeUInt)
+            {
+                if (field.IsArray)
+                {
+                    var count = binaryReader.ReadUInt64();
+                    var values = new uint[count];
+                    for (var i = 0; i < (int)count; i++)
+                    {
+                        values[i] = binaryReader.ReadUInt32();
+                        Logger.LogLine($"UInt[{i}] = {values[i]}");
+                    }
+                    return values;
+                }
+                else
+                {
+                    var value = binaryReader.ReadUInt32();
+                    Logger.LogLine($"UInt = {value}");
+                    return value;
+                }
+            }
+            else if (field.Type == UsdcField.ValueTypeId.ValueTypeInt64)
+            {
+                if (field.IsArray)
+                {
+                    var count = binaryReader.ReadUInt64();
+                    var values = new long[count];
+                    for (var i = 0; i < (int)count; i++)
+                    {
+                        values[i] = binaryReader.ReadInt64();
+                        Logger.LogLine($"Int64[{i}] = {values[i]}");
+                    }
+                    return values;
+                }
+                else
+                {
+                    var value = binaryReader.ReadInt64();
+                    Logger.LogLine($"Int64 = {value}");
+                    return value;
+                }
+            }
+            else if (field.Type == UsdcField.ValueTypeId.ValueTypeUInt64)
+            {
+                if (field.IsArray)
+                {
+                    var count = binaryReader.ReadUInt64();
+                    var values = new ulong[count];
+                    for (var i = 0; i < (int)count; i++)
+                    {
+                        values[i] = binaryReader.ReadUInt64();
+                        Logger.LogLine($"UInt64[{i}] = {values[i]}");
+                    }
+                    return values;
+                }
+                else
+                {
+                    var value = binaryReader.ReadUInt64();
+                    Logger.LogLine($"UInt64 = {value}");
+                    return value;
+                }
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeVec2f)
             {
@@ -1307,15 +1362,16 @@ namespace UsdzSharpie
                 if (field.IsArray)
                 {
                     var count = binaryReader.ReadUInt64();
+                    var values = new Vec3f[count];
                     for (var i = 0; i < (int)count; i++)
                     {
                         var x = binaryReader.ReadSingle();
                         var y = binaryReader.ReadSingle();
                         var z = binaryReader.ReadSingle();
+                        values[i] = new Vec3f(x, y, z);
                         Logger.LogLine($"Vec3f[{i}] = {x.ToCoutFormat()}, {y.ToCoutFormat()}, {z.ToCoutFormat()}");
                     }
-
-                    //value->SetVec2fArray(v.data(), v.size());
+                    return values;
                 }
                 else
                 {
@@ -1323,11 +1379,8 @@ namespace UsdzSharpie
                     var y = binaryReader.ReadSingle();
                     var z = binaryReader.ReadSingle();
                     Logger.LogLine($"Vec3f = {x.ToCoutFormat()}, {y.ToCoutFormat()}, {z.ToCoutFormat()}");
-
-                    //value->SetVec3f(v);
+                    return new Vec3f(x, y, z);
                 }
-
-                return null;
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeVec4f)
             {
@@ -1339,16 +1392,17 @@ namespace UsdzSharpie
                 if (field.IsArray)
                 {
                     var count = binaryReader.ReadUInt64();
+                    var values = new Vec4f[count];
                     for (var i = 0; i < (int)count; i++)
                     {
                         var x = binaryReader.ReadSingle();
                         var y = binaryReader.ReadSingle();
                         var z = binaryReader.ReadSingle();
                         var w = binaryReader.ReadSingle();
+                        values[i] = new Vec4f(x, y, z, w);
                         Logger.LogLine($"Vec4f[{i}] = {x.ToCoutFormat()}, {y.ToCoutFormat()}, {z.ToCoutFormat()}, {w.ToCoutFormat()}");
                     }
-
-                    //value->SetVec2fArray(v.data(), v.size());
+                    return values;
                 }
                 else
                 {
@@ -1356,12 +1410,9 @@ namespace UsdzSharpie
                     var y = binaryReader.ReadSingle();
                     var z = binaryReader.ReadSingle();
                     var w = binaryReader.ReadSingle();
-                    Logger.LogLine($"Vec3f = {x.ToCoutFormat()}, {y.ToCoutFormat()}, {z.ToCoutFormat()}, {w.ToCoutFormat()}");
-
-                    //value->SetVec4f(v);
+                    Logger.LogLine($"Vec4f = {x.ToCoutFormat()}, {y.ToCoutFormat()}, {z.ToCoutFormat()}, {w.ToCoutFormat()}");
+                    return new Vec4f(x, y, z, w);
                 }
-
-                return null;
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeTokenVector)
             {
@@ -1396,99 +1447,228 @@ namespace UsdzSharpie
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeHalf)
             {
-
-                if (!field.IsArray)
+                if (field.IsArray)
                 {
-                    throw new Exception($"Non array is not accepted for type {field.Type}");
+                    var values = ReadHalfArray(binaryReader, field.IsCompressed);
+                    for (var i = 0; i < values.Length; i++)
+                    {
+                        Logger.LogLine($"Half[{i}] = {values[i]}");
+                    }
+                    return values;
                 }
-
-                var values = ReadHalfArray(binaryReader, field.IsCompressed);
-                for (var i = 0; i < values.Length; i++)
+                else
                 {
-                    Logger.LogLine($"Half[{i}] = {values[i]}");
+                    var value = binaryReader.ReadUInt16();
+                    Logger.LogLine($"Half = {value}");
+                    return value;
                 }
-
-                return null;
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeFloat)
             {
-
-                if (!field.IsArray)
+                if (field.IsArray)
                 {
-                    throw new Exception($"Non array is not accepted for type {field.Type}");
+                    var values = ReadFloatArray(binaryReader, field.IsCompressed);
+                    for (var i = 0; i < values.Length; i++)
+                    {
+                        Logger.LogLine($"Float[{i}] = {values[i].ToCoutFormat()}");
+                    }
+                    return values;
                 }
-
-                var values = ReadFloatArray(binaryReader, field.IsCompressed);
-                for (var i = 0; i < values.Length; i++)
+                else
                 {
-                    Logger.LogLine($"Float[{i}] = {values[i].ToCoutFormat()}");
+                    var value = binaryReader.ReadSingle();
+                    Logger.LogLine($"Float = {value.ToCoutFormat()}");
+                    return value;
                 }
-
-                return null;
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeDouble)
             {
-
-                if (!field.IsArray)
+                if (field.IsArray)
                 {
-                    throw new Exception($"Non array is not accepted for type {field.Type}");
+                    var values = ReadDoubleArray(binaryReader, field.IsCompressed);
+                    for (var i = 0; i < values.Length; i++)
+                    {
+                        Logger.LogLine($"Double[{i}] = {values[i].ToCoutFormat()}");
+                    }
+                    return values;
                 }
-
-                var values = ReadDoubleArray(binaryReader, field.IsCompressed);
-                for (var i = 0; i < values.Length; i++)
+                else
                 {
-                    Logger.LogLine($"Double[{i}] = {values[i].ToCoutFormat()}");
+                    var value = binaryReader.ReadDouble();
+                    Logger.LogLine($"Double = {value.ToCoutFormat()}");
+                    return value;
                 }
-
-                return null;
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeVec3i)
             {
+                if (field.IsCompressed)
+                {
+                    throw new Exception($"Compression is not supported for type {field.Type}");
+                }
 
-                //TODO
-
-                return null;
+                if (field.IsArray)
+                {
+                    var count = binaryReader.ReadUInt64();
+                    var values = new Vec3i[count];
+                    for (var i = 0; i < (int)count; i++)
+                    {
+                        var x = binaryReader.ReadInt32();
+                        var y = binaryReader.ReadInt32();
+                        var z = binaryReader.ReadInt32();
+                        values[i] = new Vec3i(x, y, z);
+                        Logger.LogLine($"Vec3i[{i}] = {x}, {y}, {z}");
+                    }
+                    return values;
+                }
+                else
+                {
+                    var x = binaryReader.ReadInt32();
+                    var y = binaryReader.ReadInt32();
+                    var z = binaryReader.ReadInt32();
+                    Logger.LogLine($"Vec3i = {x}, {y}, {z}");
+                    return new Vec3i(x, y, z);
+                }
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeVec3f)
             {
+                if (field.IsCompressed)
+                {
+                    throw new Exception($"Compression is not supported for type {field.Type}");
+                }
 
-                //TODO
-
-                return null;
+                if (field.IsArray)
+                {
+                    var count = binaryReader.ReadUInt64();
+                    var values = new Vec3f[count];
+                    for (var i = 0; i < (int)count; i++)
+                    {
+                        var x = binaryReader.ReadSingle();
+                        var y = binaryReader.ReadSingle();
+                        var z = binaryReader.ReadSingle();
+                        values[i] = new Vec3f(x, y, z);
+                        Logger.LogLine($"Vec3f[{i}] = {x.ToCoutFormat()}, {y.ToCoutFormat()}, {z.ToCoutFormat()}");
+                    }
+                    return values;
+                }
+                else
+                {
+                    var x = binaryReader.ReadSingle();
+                    var y = binaryReader.ReadSingle();
+                    var z = binaryReader.ReadSingle();
+                    Logger.LogLine($"Vec3f = {x.ToCoutFormat()}, {y.ToCoutFormat()}, {z.ToCoutFormat()}");
+                    return new Vec3f(x, y, z);
+                }
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeVec3d)
             {
+                if (field.IsCompressed)
+                {
+                    throw new Exception($"Compression is not supported for type {field.Type}");
+                }
 
-                //TODO
-
-                return null;
+                if (field.IsArray)
+                {
+                    var count = binaryReader.ReadUInt64();
+                    var values = new Vec3d[count];
+                    for (var i = 0; i < (int)count; i++)
+                    {
+                        var x = binaryReader.ReadDouble();
+                        var y = binaryReader.ReadDouble();
+                        var z = binaryReader.ReadDouble();
+                        values[i] = new Vec3d(x, y, z);
+                        Logger.LogLine($"Vec3d[{i}] = {x.ToCoutFormat()}, {y.ToCoutFormat()}, {z.ToCoutFormat()}");
+                    }
+                    return values;
+                }
+                else
+                {
+                    var x = binaryReader.ReadDouble();
+                    var y = binaryReader.ReadDouble();
+                    var z = binaryReader.ReadDouble();
+                    Logger.LogLine($"Vec3d = {x.ToCoutFormat()}, {y.ToCoutFormat()}, {z.ToCoutFormat()}");
+                    return new Vec3d(x, y, z);
+                }
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeVec3h)
             {
+                if (field.IsCompressed)
+                {
+                    throw new Exception($"Compression is not supported for type {field.Type}");
+                }
 
-                //TODO
-
-                return null;
+                if (field.IsArray)
+                {
+                    var count = binaryReader.ReadUInt64();
+                    var values = new Vec3h[count];
+                    for (var i = 0; i < (int)count; i++)
+                    {
+                        var x = binaryReader.ReadUInt16();
+                        var y = binaryReader.ReadUInt16();
+                        var z = binaryReader.ReadUInt16();
+                        values[i] = new Vec3h(x, y, z);
+                        Logger.LogLine($"Vec3h[{i}] = {x}, {y}, {z}");
+                    }
+                    return values;
+                }
+                else
+                {
+                    var x = binaryReader.ReadUInt16();
+                    var y = binaryReader.ReadUInt16();
+                    var z = binaryReader.ReadUInt16();
+                    Logger.LogLine($"Vec3h = {x}, {y}, {z}");
+                    return new Vec3h(x, y, z);
+                }
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeMatrix4d)
             {
+                if (field.IsCompressed)
+                {
+                    throw new Exception($"Compression is not supported for type {field.Type}");
+                }
 
-                //TODO
-
-                return null;
+                if (field.IsArray)
+                {
+                    var count = binaryReader.ReadUInt64();
+                    var values = new Matrix4d[count];
+                    for (var i = 0; i < (int)count; i++)
+                    {
+                        var matrix = new Matrix4d
+                        {
+                            M00 = binaryReader.ReadDouble(), M01 = binaryReader.ReadDouble(), M02 = binaryReader.ReadDouble(), M03 = binaryReader.ReadDouble(),
+                            M10 = binaryReader.ReadDouble(), M11 = binaryReader.ReadDouble(), M12 = binaryReader.ReadDouble(), M13 = binaryReader.ReadDouble(),
+                            M20 = binaryReader.ReadDouble(), M21 = binaryReader.ReadDouble(), M22 = binaryReader.ReadDouble(), M23 = binaryReader.ReadDouble(),
+                            M30 = binaryReader.ReadDouble(), M31 = binaryReader.ReadDouble(), M32 = binaryReader.ReadDouble(), M33 = binaryReader.ReadDouble()
+                        };
+                        values[i] = matrix;
+                        Logger.LogLine($"Matrix4d[{i}] = [[{matrix.M00},{matrix.M01},{matrix.M02},{matrix.M03}],[{matrix.M10},{matrix.M11},{matrix.M12},{matrix.M13}],[{matrix.M20},{matrix.M21},{matrix.M22},{matrix.M23}],[{matrix.M30},{matrix.M31},{matrix.M32},{matrix.M33}]]");
+                    }
+                    return values;
+                }
+                else
+                {
+                    var matrix = new Matrix4d
+                    {
+                        M00 = binaryReader.ReadDouble(), M01 = binaryReader.ReadDouble(), M02 = binaryReader.ReadDouble(), M03 = binaryReader.ReadDouble(),
+                        M10 = binaryReader.ReadDouble(), M11 = binaryReader.ReadDouble(), M12 = binaryReader.ReadDouble(), M13 = binaryReader.ReadDouble(),
+                        M20 = binaryReader.ReadDouble(), M21 = binaryReader.ReadDouble(), M22 = binaryReader.ReadDouble(), M23 = binaryReader.ReadDouble(),
+                        M30 = binaryReader.ReadDouble(), M31 = binaryReader.ReadDouble(), M32 = binaryReader.ReadDouble(), M33 = binaryReader.ReadDouble()
+                    };
+                    Logger.LogLine($"Matrix4d = [[{matrix.M00},{matrix.M01},{matrix.M02},{matrix.M03}],[{matrix.M10},{matrix.M11},{matrix.M12},{matrix.M13}],[{matrix.M20},{matrix.M21},{matrix.M22},{matrix.M23}],[{matrix.M30},{matrix.M31},{matrix.M32},{matrix.M33}]]");
+                    return matrix;
+                }
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeDictionary)
             {
-
-                //TODO
-
+                // Dictionary unpacking - basic implementation
+                Logger.LogLine($"Dictionary type - skipping detailed unpacking");
+                // TODO: Implement full dictionary support when needed
                 return null;
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypePathListOp)
             {
-
-                //TODO
-
+                // PathListOp unpacking - basic implementation
+                Logger.LogLine($"PathListOp type - skipping detailed unpacking");
+                // TODO: Implement full PathListOp support when needed
                 return null;
             }
 
@@ -1522,7 +1702,7 @@ namespace UsdzSharpie
 
         private void BuildLiveFieldSets(BinaryReader binaryReader)
         {
-            var liveFieldSets = new List<LiveFieldSet>();
+            liveFieldSets = new List<LiveFieldSet>();
 
             var start = 0;
             for (var i = 0; i < fieldSetIndices.Length; i ++)
@@ -1586,28 +1766,389 @@ namespace UsdzSharpie
             }
         }
 
-        public class Scene
+        private UsdcScene scene;
+
+        public UsdcScene GetScene()
         {
-            //TODO:
+            return scene;
         }
 
-        public void ReconstructSceneRecursively(int parent, int level, ref Dictionary<int, int> pathToSpecLookup, ref Scene scene)
+        private void ReconstructSceneRecursively(int nodeIndex, int level, ref Dictionary<int, int> pathToSpecLookup,
+            ref Dictionary<int, UsdcSceneNode> nodeMap, UsdcSceneNode parentSceneNode)
         {
-            //TODO:
+            if (nodeIndex < 0 || nodeIndex >= nodes.Length)
+                return;
+
+            var node = nodes[nodeIndex];
+            var sceneNode = new UsdcSceneNode
+            {
+                Name = node.GetLocalPath(),
+                Path = node.GetPath().full_path_name(),
+                NodeType = node.GetNodeType(),
+                Parent = parentSceneNode
+            };
+
+            // Add to parent's children
+            if (parentSceneNode != null)
+            {
+                parentSceneNode.Children.Add(sceneNode);
+            }
+
+            scene.AllNodes.Add(sceneNode);
+            nodeMap[nodeIndex] = sceneNode;
+
+            Logger.LogLine($"{new string(' ', level * 2)}Node[{nodeIndex}]: {sceneNode.Path} (Type: {sceneNode.NodeType})");
+
+            // Get spec data for this node (Prim)
+            var pathIndex = Array.IndexOf(paths, node.GetPath());
+            if (pathToSpecLookup.ContainsKey(pathIndex))
+            {
+                var specIndex = pathToSpecLookup[pathIndex];
+                if (specIndex >= 0 && specIndex < specs.Length)
+                {
+                    var spec = specs[specIndex];
+                    ExtractNodeData(sceneNode, spec);
+                }
+            }
+
+            // Also collect attribute data (properties like .points, .faceVertexIndices, etc.)
+            ExtractAttributeData(sceneNode, ref pathToSpecLookup);
+
+            // Recursively process children
+            var children = node.GetChildren();
+            foreach (var childIndex in children)
+            {
+                ReconstructSceneRecursively((int)childIndex, level + 1, ref pathToSpecLookup, ref nodeMap, sceneNode);
+            }
+        }
+
+        private void ExtractAttributeData(UsdcSceneNode sceneNode, ref Dictionary<int, int> pathToSpecLookup)
+        {
+            // Look for attributes like .points, .faceVertexIndices, .normals, etc.
+            var primPath = sceneNode.Path;
+
+            for (int i = 0; i < paths.Length; i++)
+            {
+                var attrPath = paths[i].full_path_name();
+
+                // Check if this path is an attribute of the current prim
+                if (attrPath.StartsWith(primPath + "."))
+                {
+                    var attrName = attrPath.Substring(primPath.Length + 1); // Remove "primPath." prefix
+
+                    if (pathToSpecLookup.ContainsKey(i))
+                    {
+                        var specIndex = pathToSpecLookup[i];
+                        if (specIndex >= 0 && specIndex < specs.Length)
+                        {
+                            var spec = specs[specIndex];
+                            if (spec.FieldSetIndex >= 0)
+                            {
+                                // Find the LiveFieldSet with matching Index
+                                var fieldSet = liveFieldSets.FirstOrDefault(fs => fs.Index == spec.FieldSetIndex);
+                                if (fieldSet == null)
+                                    continue;
+
+                                // Extract the value from the fieldset
+                                foreach (var fieldValue in fieldSet.FieldValuePairs)
+                                {
+                                    // The actual data is usually in a field called "default" or "timeSamples"
+                                    if (fieldValue.Name == "default" || fieldValue.Name == "timeSamples")
+                                    {
+                                        Logger.LogLine($"    Attribute: {attrName} = {fieldValue.Value}");
+
+                                        // Store in fields dictionary with the attribute name
+                                        sceneNode.Fields[attrName] = fieldValue.Value;
+
+                                        // Extract based on node type
+                                        if (sceneNode.NodeType == UsdcNode.NodeType.NODE_TYPE_GEOM_MESH)
+                                        {
+                                            ExtractMeshData(sceneNode, attrName, fieldValue.Value);
+                                        }
+                                        else if (fieldValue.Name.StartsWith("xformOp:"))
+                                        {
+                                            ExtractTransformData(sceneNode, attrName, fieldValue.Value);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private void ExtractNodeData(UsdcSceneNode sceneNode, UsdcSpec spec)
+        {
+            if (spec.FieldSetIndex < 0)
+                return;
+
+            // Find the LiveFieldSet with matching Index
+            var fieldSet = liveFieldSets.FirstOrDefault(fs => fs.Index == spec.FieldSetIndex);
+            if (fieldSet == null)
+                return;
+
+            // First pass: determine node type from typeName field
+            foreach (var fieldValue in fieldSet.FieldValuePairs)
+            {
+                if (fieldValue.Name == "typeName" && fieldValue.Value is string typeName)
+                {
+                    sceneNode.NodeType = DetermineNodeType(typeName);
+                    Logger.LogLine($"  TypeName: {typeName} -> {sceneNode.NodeType}");
+                    break;
+                }
+            }
+
+            // Second pass: extract data based on field name
+            foreach (var fieldValue in fieldSet.FieldValuePairs)
+            {
+                sceneNode.Fields[fieldValue.Name] = fieldValue.Value;
+                Logger.LogLine($"  Field: {fieldValue.Name} = {fieldValue.Value}");
+
+                // Check if it's transform data (can be on any node type)
+                if (fieldValue.Name.StartsWith("xformOp:") || fieldValue.Name == "xformOpOrder")
+                {
+                    ExtractTransformData(sceneNode, fieldValue.Name, fieldValue.Value);
+                }
+
+                // Extract type-specific data
+                if (sceneNode.NodeType == UsdcNode.NodeType.NODE_TYPE_GEOM_MESH)
+                {
+                    ExtractMeshData(sceneNode, fieldValue.Name, fieldValue.Value);
+                }
+                else if (sceneNode.NodeType == UsdcNode.NodeType.NODE_TYPE_MATERIAL)
+                {
+                    ExtractMaterialData(sceneNode, fieldValue.Name, fieldValue.Value);
+                }
+                else if (sceneNode.NodeType == UsdcNode.NodeType.NODE_TYPE_SHADER)
+                {
+                    ExtractShaderData(sceneNode, fieldValue.Name, fieldValue.Value);
+                }
+            }
+        }
+
+        private UsdcNode.NodeType DetermineNodeType(string typeName)
+        {
+            if (string.IsNullOrEmpty(typeName))
+                return UsdcNode.NodeType.NODE_TYPE_NULL;
+
+            switch (typeName)
+            {
+                case "Mesh":
+                    return UsdcNode.NodeType.NODE_TYPE_GEOM_MESH;
+                case "Xform":
+                    return UsdcNode.NodeType.NODE_TYPE_XFORM;
+                case "Material":
+                    return UsdcNode.NodeType.NODE_TYPE_MATERIAL;
+                case "Shader":
+                    return UsdcNode.NodeType.NODE_TYPE_SHADER;
+                case "Scope":
+                case "Group":
+                    return UsdcNode.NodeType.NODE_TYPE_GROUP;
+                default:
+                    Logger.LogLine($"  Unknown typeName: {typeName}, using CUSTOM");
+                    return UsdcNode.NodeType.NODE_TYPE_CUSTOM;
+            }
+        }
+
+        private void ExtractMeshData(UsdcSceneNode sceneNode, string fieldName, object value)
+        {
+            if (sceneNode.Mesh == null)
+            {
+                sceneNode.Mesh = new UsdcMesh { Name = sceneNode.Name };
+            }
+
+            switch (fieldName)
+            {
+                case "points":
+                    if (value is Vec3f[] points)
+                    {
+                        sceneNode.Mesh.Vertices = points;
+                        Logger.LogLine($"    Extracted {points.Length} vertices");
+                    }
+                    break;
+
+                case "normals":
+                    if (value is Vec3f[] normals)
+                    {
+                        sceneNode.Mesh.Normals = normals;
+                        Logger.LogLine($"    Extracted {normals.Length} normals");
+                    }
+                    break;
+
+                case "primvars:st":
+                case "st":
+                    if (value is Vec2f[] texCoords)
+                    {
+                        sceneNode.Mesh.TexCoords = texCoords;
+                        Logger.LogLine($"    Extracted {texCoords.Length} texture coordinates");
+                    }
+                    break;
+
+                case "faceVertexIndices":
+                    if (value is int[] indices)
+                    {
+                        // Store raw indices - will triangulate later using faceVertexCounts
+                        sceneNode.Mesh.RawFaceVertexIndices = indices;
+                        Logger.LogLine($"    Extracted {indices.Length} face indices");
+                    }
+                    break;
+
+                case "faceVertexCounts":
+                    if (value is int[] counts)
+                    {
+                        sceneNode.Mesh.FaceVertexCounts = counts;
+                        Logger.LogLine($"    Extracted {counts.Length} face vertex counts");
+                    }
+                    break;
+
+                case "orientation":
+                    if (value is UsdcField.Orientation orientation)
+                    {
+                        sceneNode.Mesh.Orientation = orientation;
+                    }
+                    break;
+
+                case "doubleSided":
+                    if (value is bool doubleSided)
+                    {
+                        sceneNode.Mesh.DoubleSided = doubleSided;
+                    }
+                    break;
+            }
+
+            // Add mesh to scene dictionary
+            if (!scene.Meshes.ContainsKey(sceneNode.Path))
+            {
+                scene.Meshes[sceneNode.Path] = sceneNode.Mesh;
+            }
+        }
+
+        private void ExtractTransformData(UsdcSceneNode sceneNode, string fieldName, object value)
+        {
+            switch (fieldName)
+            {
+                case "xformOp:transform":
+                    if (value is Matrix4d matrix)
+                    {
+                        sceneNode.Transform.Matrix = matrix;
+                        sceneNode.Transform.HasMatrix = true;
+                        Logger.LogLine($"    Extracted transform matrix");
+                    }
+                    else if (value is Matrix4d[] matrices && matrices.Length > 0)
+                    {
+                        sceneNode.Transform.Matrix = matrices[0];
+                        sceneNode.Transform.HasMatrix = true;
+                        Logger.LogLine($"    Extracted transform matrix from array");
+                    }
+                    break;
+
+                case "xformOp:translate":
+                    if (value is Vec3d translation)
+                    {
+                        sceneNode.Transform.Translation = translation;
+                        sceneNode.Transform.HasTRS = true;
+                    }
+                    else if (value is Vec3f translationF)
+                    {
+                        sceneNode.Transform.Translation = new Vec3d(translationF.X, translationF.Y, translationF.Z);
+                        sceneNode.Transform.HasTRS = true;
+                    }
+                    break;
+
+                case "xformOp:rotateXYZ":
+                case "xformOp:rotate":
+                    if (value is Vec3d rotation)
+                    {
+                        sceneNode.Transform.Rotation = rotation;
+                        sceneNode.Transform.RotationQuat = UsdcTransform.EulerToQuaternion(rotation);
+                        sceneNode.Transform.HasTRS = true;
+                    }
+                    else if (value is Vec3f rotationF)
+                    {
+                        var rot = new Vec3d(rotationF.X, rotationF.Y, rotationF.Z);
+                        sceneNode.Transform.Rotation = rot;
+                        sceneNode.Transform.RotationQuat = UsdcTransform.EulerToQuaternion(rot);
+                        sceneNode.Transform.HasTRS = true;
+                    }
+                    break;
+
+                case "xformOp:scale":
+                    if (value is Vec3d scale)
+                    {
+                        sceneNode.Transform.Scale = scale;
+                        sceneNode.Transform.HasTRS = true;
+                    }
+                    else if (value is Vec3f scaleF)
+                    {
+                        sceneNode.Transform.Scale = new Vec3d(scaleF.X, scaleF.Y, scaleF.Z);
+                        sceneNode.Transform.HasTRS = true;
+                    }
+                    break;
+            }
+        }
+
+        private void ExtractMaterialData(UsdcSceneNode sceneNode, string fieldName, object value)
+        {
+            if (sceneNode.Material == null)
+            {
+                sceneNode.Material = new UsdcMaterial { Name = sceneNode.Name, Path = sceneNode.Path };
+            }
+
+            // Store in material inputs
+            sceneNode.Material.ShaderInputs[fieldName] = value;
+
+            // Add to scene dictionary
+            if (!scene.Materials.ContainsKey(sceneNode.Path))
+            {
+                scene.Materials[sceneNode.Path] = sceneNode.Material;
+            }
+        }
+
+        private void ExtractShaderData(UsdcSceneNode sceneNode, string fieldName, object value)
+        {
+            if (sceneNode.Shader == null)
+            {
+                sceneNode.Shader = new UsdcShader { Name = sceneNode.Name, Path = sceneNode.Path };
+            }
+
+            // Extract shader ID
+            if (fieldName == "info:id" && value is string shaderId)
+            {
+                sceneNode.Shader.ShaderId = shaderId;
+            }
+
+            // Store in shader inputs
+            sceneNode.Shader.Inputs[fieldName] = value;
+
+            // Add to scene dictionary
+            if (!scene.Shaders.ContainsKey(sceneNode.Path))
+            {
+                scene.Shaders[sceneNode.Path] = sceneNode.Shader;
+            }
         }
 
         public void ReconstructScene()
         {
             Logger.LogLine($"reconstruct scene:");
 
+            scene = new UsdcScene();
             var pathToSpecLookup = new Dictionary<int, int>();
             for (var i = 0; i < specs.Length; i++)
             {
                 pathToSpecLookup.Add(specs[i].PathIndex, i);
             }
 
-            var scene = new Scene();
-            ReconstructSceneRecursively(0, 0, ref pathToSpecLookup, ref scene);
+            var nodeMap = new Dictionary<int, UsdcSceneNode>();
+            ReconstructSceneRecursively(0, 0, ref pathToSpecLookup, ref nodeMap, null);
+
+            // Set root node
+            if (nodeMap.ContainsKey(0))
+            {
+                scene.RootNode = nodeMap[0];
+            }
+
+            Logger.LogLine($"Scene reconstruction complete: {scene.AllNodes.Count} nodes, {scene.Meshes.Count} meshes, {scene.Materials.Count} materials");
         }
 
         public void ReadUsdc(Stream stream)

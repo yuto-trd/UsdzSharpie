@@ -72,6 +72,7 @@ namespace UsdzSharpie
         {
             _parent = parent;
             _path = path;
+            _node_type = NodeType.NODE_TYPE_NULL; // Default to NULL type
         }
     }
 }

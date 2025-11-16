@@ -67,6 +67,43 @@ namespace UsdzSharpie.QuickTest
             {
                 var usdzPath = Path.GetFullPath(file);
                 usdzReader.ReadUsdz(usdzPath);
+
+                // Print scene summary
+                var scene = usdzReader.GetScene();
+                if (scene != null)
+                {
+                    Console.WriteLine($"\n=== Scene Summary ===");
+                    Console.WriteLine($"Total Nodes: {scene.AllNodes.Count}");
+                    Console.WriteLine($"Meshes: {scene.Meshes.Count}");
+                    Console.WriteLine($"Materials: {scene.Materials.Count}");
+                    Console.WriteLine($"Shaders: {scene.Shaders.Count}");
+
+                    var meshNodes = scene.GetMeshNodes();
+                    Console.WriteLine($"\nMesh Nodes: {meshNodes.Count}");
+
+                    foreach (var meshNode in meshNodes)
+                    {
+                        Console.WriteLine($"\n  Node: {meshNode.Path}");
+                        Console.WriteLine($"  Type: {meshNode.NodeType}");
+
+                        if (meshNode.Mesh != null)
+                        {
+                            Console.WriteLine($"  Mesh Data:");
+                            Console.WriteLine($"    Vertices: {meshNode.Mesh.Vertices?.Length ?? 0}");
+                            Console.WriteLine($"    Normals: {meshNode.Mesh.Normals?.Length ?? 0}");
+                            Console.WriteLine($"    TexCoords: {meshNode.Mesh.TexCoords?.Length ?? 0}");
+                            Console.WriteLine($"    Faces: {meshNode.Mesh.FaceVertexIndices?.Length ?? 0}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"  Mesh is NULL!");
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("ERROR: Scene is null!");
+                }
             }
             Logger.LogFile.Close();
 

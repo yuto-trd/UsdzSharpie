@@ -6,6 +6,16 @@ namespace UsdzSharpie
 {
     public class UsdzReader
     {
+        private UsdcReader mainUsdcReader;
+
+        public void Read(string filename)
+        {
+            using (var stream = new FileStream(filename, FileMode.Open, FileAccess.Read))
+            {
+                ReadUsdz(stream);
+            }
+        }
+
         public void ReadUsdz(string filename)
         {
             using (var stream = new FileStream(filename, FileMode.Open, FileAccess.Read))
@@ -34,10 +44,21 @@ namespace UsdzSharpie
                                 usdcReader.ReadUsdc(memoryStream);
                             }
                         }
+
+                        // Store the first USDC reader as the main scene
+                        if (mainUsdcReader == null)
+                        {
+                            mainUsdcReader = usdcReader;
+                        }
                     }
-                    
+
                 }
             }
+        }
+
+        public UsdcScene GetScene()
+        {
+            return mainUsdcReader?.GetScene();
         }
 
         private void ValidateUsdz(Stream stream, ZipArchive zipArchive)
