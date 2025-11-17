@@ -7,6 +7,7 @@ namespace UsdzSharpie
     public class UsdzReader
     {
         private UsdcReader mainUsdcReader;
+        private System.Collections.Generic.Dictionary<string, byte[]> textures = new System.Collections.Generic.Dictionary<string, byte[]>();
 
         public void Read(string filename)
         {
@@ -32,7 +33,9 @@ namespace UsdzSharpie
 
                 foreach (var entry in zipArchive.Entries)
                 {
-                    if (Path.GetExtension(entry.FullName).Equals(".usdc", StringComparison.CurrentCultureIgnoreCase))
+                    var ext = Path.GetExtension(entry.FullName).ToLower();
+
+                    if (ext.Equals(".usdc"))
                     {
                         var usdcReader = new UsdcReader();
                         {
@@ -51,7 +54,17 @@ namespace UsdzSharpie
                             mainUsdcReader = usdcReader;
                         }
                     }
-
+                    else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+                    {
+                        // Extract texture data
+                        using (var entryStream = entry.Open())
+                        using (var memoryStream = new MemoryStream())
+                        {
+                            entryStream.CopyTo(memoryStream);
+                            textures[entry.FullName] = memoryStream.ToArray();
+                            Logger.LogLine($"Extracted texture: {entry.FullName} ({memoryStream.Length} bytes)");
+                        }
+                    }
                 }
             }
         }
@@ -59,6 +72,33 @@ namespace UsdzSharpie
         public UsdcScene GetScene()
         {
             return mainUsdcReader?.GetScene();
+        }
+
+        public byte[] GetTexture(string texturePath)
+        {
+            // Clean up the path
+            var cleanPath = texturePath.TrimStart('/');
+
+            if (textures.ContainsKey(cleanPath))
+            {
+                return textures[cleanPath];
+            }
+
+            // Try with different variations
+            foreach (var key in textures.Keys)
+            {
+                if (key.EndsWith(Path.GetFileName(texturePath)))
+                {
+                    return textures[key];
+                }
+            }
+
+            return null;
+        }
+
+        public System.Collections.Generic.Dictionary<string, byte[]> GetAllTextures()
+        {
+            return textures;
         }
 
         private void ValidateUsdz(Stream stream, ZipArchive zipArchive)

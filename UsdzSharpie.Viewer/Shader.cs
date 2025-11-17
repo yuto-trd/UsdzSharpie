@@ -42,6 +42,8 @@ in vec2 TexCoord;
 uniform vec3 viewPos;
 uniform vec3 lightPos;
 uniform vec3 objectColor;
+uniform sampler2D diffuseTexture;
+uniform bool hasTexture;
 
 void main()
 {
@@ -62,7 +64,15 @@ void main()
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
     vec3 specular = specularStrength * spec * vec3(1.0, 1.0, 1.0);
 
-    vec3 result = (ambient + diffuse + specular) * objectColor;
+    // Get base color from texture or uniform
+    vec3 baseColor = objectColor;
+    if (hasTexture)
+    {
+        vec4 texColor = texture(diffuseTexture, TexCoord);
+        baseColor = texColor.rgb;
+    }
+
+    vec3 result = (ambient + diffuse + specular) * baseColor;
     FragColor = vec4(result, 1.0);
 }
 ";
@@ -101,18 +111,55 @@ void main()
         public void SetMatrix4(string name, Matrix4 value)
         {
             int location = GL.GetUniformLocation(Handle, name);
+            if (location == -1)
+            {
+                Console.WriteLine($"Warning: Uniform '{name}' not found in shader");
+                return;
+            }
             GL.UniformMatrix4(location, false, ref value);
         }
 
         public void SetVector3(string name, Vector3 value)
         {
             int location = GL.GetUniformLocation(Handle, name);
+            if (location == -1)
+            {
+                Console.WriteLine($"Warning: Uniform '{name}' not found in shader");
+                return;
+            }
             GL.Uniform3(location, value);
         }
 
         public void SetFloat(string name, float value)
         {
             int location = GL.GetUniformLocation(Handle, name);
+            if (location == -1)
+            {
+                Console.WriteLine($"Warning: Uniform '{name}' not found in shader");
+                return;
+            }
+            GL.Uniform1(location, value);
+        }
+
+        public void SetBool(string name, bool value)
+        {
+            int location = GL.GetUniformLocation(Handle, name);
+            if (location == -1)
+            {
+                Console.WriteLine($"Warning: Uniform '{name}' not found in shader");
+                return;
+            }
+            GL.Uniform1(location, value ? 1 : 0);
+        }
+
+        public void SetInt(string name, int value)
+        {
+            int location = GL.GetUniformLocation(Handle, name);
+            if (location == -1)
+            {
+                Console.WriteLine($"Warning: Uniform '{name}' not found in shader");
+                return;
+            }
             GL.Uniform1(location, value);
         }
 

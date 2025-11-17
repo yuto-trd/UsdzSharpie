@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using OpenTK.Graphics.OpenGL;
 using OpenTK.Mathematics;
 using OpenTK.Windowing.Common;
@@ -12,6 +13,7 @@ namespace UsdzSharpie.Viewer
     public class UsdzViewer : GameWindow
     {
         private UsdcScene scene;
+        private UsdzReader usdzReader;
         private MeshRenderer[] meshRenderers;
         private Camera camera;
         private Shader shader;
@@ -33,9 +35,9 @@ namespace UsdzSharpie.Viewer
         {
             Console.WriteLine($"Loading USDZ file: {path}");
 
-            var reader = new UsdzReader();
-            reader.Read(path);
-            scene = reader.GetScene();
+            usdzReader = new UsdzReader();
+            usdzReader.Read(path);
+            scene = usdzReader.GetScene();
 
             if (scene == null)
             {
@@ -46,6 +48,7 @@ namespace UsdzSharpie.Viewer
             Console.WriteLine($"Loaded scene with {scene.AllNodes.Count} nodes");
             Console.WriteLine($"Meshes: {scene.Meshes.Count}");
             Console.WriteLine($"Materials: {scene.Materials.Count}");
+            Console.WriteLine($"Textures: {usdzReader.GetAllTextures().Count}");
         }
 
         protected override void OnLoad()
@@ -66,6 +69,14 @@ namespace UsdzSharpie.Viewer
             // Create mesh renderers
             if (scene != null && scene.Meshes.Count > 0)
             {
+                // Get the first material (if any)
+                UsdcMaterial defaultMaterial = null;
+                if (scene.Materials.Count > 0)
+                {
+                    defaultMaterial = scene.Materials.Values.First();
+                    Console.WriteLine($"Using default material with color: ({defaultMaterial.DiffuseColor.X}, {defaultMaterial.DiffuseColor.Y}, {defaultMaterial.DiffuseColor.Z})");
+                }
+
                 var meshList = new System.Collections.Generic.List<MeshRenderer>();
                 foreach (var meshNode in scene.GetMeshNodes())
                 {
@@ -73,6 +84,51 @@ namespace UsdzSharpie.Viewer
                     {
                         var renderer = new MeshRenderer(meshNode.Mesh);
                         renderer.Transform = meshNode.GetWorldTransform();
+
+                        // Try to get material color
+                        UsdcMaterial material = null;
+                        if (!string.IsNullOrEmpty(meshNode.Mesh.MaterialPath) && scene.Materials.ContainsKey(meshNode.Mesh.MaterialPath))
+                        {
+                            material = scene.Materials[meshNode.Mesh.MaterialPath];
+                        }
+                        else if (defaultMaterial != null)
+                        {
+                            material = defaultMaterial;
+                        }
+
+                        if (material != null)
+                        {
+                            renderer.Color = new Vector3(material.DiffuseColor.X, material.DiffuseColor.Y, material.DiffuseColor.Z);
+                            Console.WriteLine($"  Material color: ({material.DiffuseColor.X}, {material.DiffuseColor.Y}, {material.DiffuseColor.Z})");
+
+                            // Try to load diffuse texture
+                            if (!string.IsNullOrEmpty(material.DiffuseTexture))
+                            {
+                                var textureData = usdzReader.GetTexture(material.DiffuseTexture);
+                                if (textureData != null)
+                                {
+                                    try
+                                    {
+                                        renderer.DiffuseTexture = new Texture(textureData);
+                                        Console.WriteLine($"  Loaded texture: {material.DiffuseTexture}");
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"  Failed to load texture: {ex.Message}");
+                                    }
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"  Texture not found: {material.DiffuseTexture}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Default red color if no material
+                            renderer.Color = new Vector3(0.8f, 0.2f, 0.2f);
+                        }
+
                         meshList.Add(renderer);
                         Console.WriteLine($"Created renderer for mesh: {meshNode.Name} with {meshNode.Mesh.Vertices.Length} vertices");
                     }

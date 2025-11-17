@@ -657,10 +657,9 @@ namespace UsdzSharpie
                 }
 
                 var token = tokens[field.Payload];
+                Logger.LogLine($"AssetPath: {token}");
 
-                //value->SetAssetPath(str);
-
-                return null;
+                return token;
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeSpecifier)
             {
@@ -1244,6 +1243,34 @@ namespace UsdzSharpie
 
                 return null;
             }
+            else if (field.Type == UsdcField.ValueTypeId.ValueTypeAssetPath)
+            {
+                if (field.IsCompressed)
+                {
+                    throw new Exception($"Compression is not supported for type {field.Type}");
+                }
+
+                if (field.IsArray)
+                {
+                    var count = binaryReader.ReadUInt64();
+                    var result = new List<string>();
+                    for (var i = 0; i < (int)count; i++)
+                    {
+                        var index = binaryReader.ReadInt32();
+                        var token = tokens[index];
+                        Logger.LogLine($"AssetPath[{i}] = {token} ({index})");
+                        result.Add(token);
+                    }
+                    return result;
+                }
+                else
+                {
+                    var index = binaryReader.ReadInt32();
+                    var token = tokens[index];
+                    Logger.LogLine($"AssetPath = {token} ({index})");
+                    return token;
+                }
+            }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeInt)
             {
                 if (field.IsArray)
@@ -1332,25 +1359,23 @@ namespace UsdzSharpie
                 if (field.IsArray)
                 {
                     var count = binaryReader.ReadUInt64();
+                    var values = new Vec2f[count];
                     for (var i = 0; i < (int)count; i++)
                     {
                         var x = binaryReader.ReadSingle();
                         var y = binaryReader.ReadSingle();
+                        values[i] = new Vec2f(x, y);
                         Logger.LogLine($"Vec2f[{i}] = {x}, {y}");
                     }
-
-                    //value->SetVec2fArray(v.data(), v.size());
+                    return values;
                 }
                 else
                 {
                     var x = binaryReader.ReadSingle();
                     var y = binaryReader.ReadSingle();
                     Logger.LogLine($"Vec2f = {x}, {y}");
-
-                    //value->SetVec2f(v);
+                    return new Vec2f(x, y);
                 }
-
-                return null;
             }
             else if (field.Type == UsdcField.ValueTypeId.ValueTypeVec3f)
             {
@@ -1865,9 +1890,34 @@ namespace UsdzSharpie
                                         {
                                             ExtractMeshData(sceneNode, attrName, fieldValue.Value);
                                         }
+                                        else if (sceneNode.NodeType == UsdcNode.NodeType.NODE_TYPE_SHADER)
+                                        {
+                                            ExtractShaderData(sceneNode, attrName, fieldValue.Value);
+                                        }
                                         else if (fieldValue.Name.StartsWith("xformOp:"))
                                         {
                                             ExtractTransformData(sceneNode, attrName, fieldValue.Value);
+                                        }
+                                    }
+                                    // Handle material:binding with targetPaths
+                                    else if (attrName == "material:binding" && fieldValue.Name == "targetPaths")
+                                    {
+                                        if (fieldValue.Value is UsdcPath[] paths && paths.Length > 0)
+                                        {
+                                            var materialPath = paths[0].full_path_name();
+                                            if (sceneNode.Mesh != null)
+                                            {
+                                                sceneNode.Mesh.MaterialPath = materialPath;
+                                                Logger.LogLine($"    Bound material: {materialPath}");
+                                            }
+                                        }
+                                        else if (fieldValue.Value is string[] stringPaths && stringPaths.Length > 0)
+                                        {
+                                            if (sceneNode.Mesh != null)
+                                            {
+                                                sceneNode.Mesh.MaterialPath = stringPaths[0];
+                                                Logger.LogLine($"    Bound material: {stringPaths[0]}");
+                                            }
                                         }
                                     }
                                 }
@@ -2015,6 +2065,11 @@ namespace UsdzSharpie
                         sceneNode.Mesh.DoubleSided = doubleSided;
                     }
                     break;
+
+                case "material:binding":
+                    // Material binding is handled as a relationship with targetPaths
+                    // We'll process this in ExtractAttributeData
+                    break;
             }
 
             // Add mesh to scene dictionary
@@ -2116,6 +2171,7 @@ namespace UsdzSharpie
             if (fieldName == "info:id" && value is string shaderId)
             {
                 sceneNode.Shader.ShaderId = shaderId;
+                Logger.LogLine($"    Set shader ID: {shaderId} for {sceneNode.Path}");
             }
 
             // Store in shader inputs
@@ -2148,7 +2204,130 @@ namespace UsdzSharpie
                 scene.RootNode = nodeMap[0];
             }
 
-            Logger.LogLine($"Scene reconstruction complete: {scene.AllNodes.Count} nodes, {scene.Meshes.Count} meshes, {scene.Materials.Count} materials");
+            // Apply shader data to materials
+            ApplyShaderDataToMaterials();
+
+            Logger.LogLine($"Scene reconstruction complete: {scene.AllNodes.Count} nodes, {scene.Meshes.Count} meshes, {scene.Materials.Count} materials, {scene.Shaders.Count} shaders");
+        }
+
+        private void ApplyShaderDataToMaterials()
+        {
+            Logger.LogLine($"ApplyShaderDataToMaterials: Processing {scene.Shaders.Count} shaders");
+
+            // Find UsdPreviewSurface shaders and apply their inputs to materials
+            foreach (var shader in scene.Shaders.Values)
+            {
+                Logger.LogLine($"  Shader: {shader.Path}, ID: {shader.ShaderId}, Inputs: {shader.Inputs.Count}");
+
+                // Debug: print all inputs
+                foreach (var input in shader.Inputs)
+                {
+                    Logger.LogLine($"    Input: {input.Key} = {input.Value}");
+                }
+
+                if (shader.ShaderId == "UsdPreviewSurface")
+                {
+                    // Try to find the parent material
+                    // Shader path is like /chair_swan/Looks/pxrUsdPreviewSurface1SG/RedChairMaterial
+                    // Material path is /chair_swan/Looks/pxrUsdPreviewSurface1SG
+                    var materialPath = GetParentPath(shader.Path);
+                    if (scene.Materials.ContainsKey(materialPath))
+                    {
+                        var material = scene.Materials[materialPath];
+
+                        // Extract diffuse color
+                        if (shader.Inputs.ContainsKey("inputs:diffuseColor"))
+                        {
+                            if (shader.Inputs["inputs:diffuseColor"] is Vec3f diffuseColor)
+                            {
+                                material.DiffuseColor = diffuseColor;
+                                Logger.LogLine($"Applied diffuse color ({diffuseColor.X}, {diffuseColor.Y}, {diffuseColor.Z}) to material {materialPath}");
+                            }
+                        }
+
+                        // Extract other properties
+                        if (shader.Inputs.ContainsKey("inputs:metallic") && shader.Inputs["inputs:metallic"] is float metallic)
+                        {
+                            material.Metallic = metallic;
+                        }
+
+                        if (shader.Inputs.ContainsKey("inputs:roughness") && shader.Inputs["inputs:roughness"] is float roughness)
+                        {
+                            material.Roughness = roughness;
+                        }
+                    }
+                }
+                else if (shader.ShaderId == "UsdUVTexture")
+                {
+                    // This is a texture shader - extract the file path
+                    if (shader.Inputs.ContainsKey("inputs:file"))
+                    {
+                        var texturePath = shader.Inputs["inputs:file"]?.ToString();
+                        Logger.LogLine($"  Found texture path: {texturePath}");
+
+                        if (!string.IsNullOrEmpty(texturePath) && scene.Materials.Count > 0)
+                        {
+                            var material = scene.Materials.Values.First();
+                            var lowerPath = texturePath.ToLower();
+
+                            // Determine texture type based on file name patterns
+                            if (lowerPath.Contains("_bc.") || lowerPath.Contains("basecolor") || lowerPath.Contains("diffuse"))
+                            {
+                                material.DiffuseTexture = texturePath;
+                                Logger.LogLine($"Applied diffuse texture {texturePath} to material {material.Path}");
+                            }
+                            else if (lowerPath.Contains("_n.") || lowerPath.Contains("normal"))
+                            {
+                                material.NormalTexture = texturePath;
+                                Logger.LogLine($"Applied normal texture {texturePath} to material {material.Path}");
+                            }
+                            else if (lowerPath.Contains("_m.") || lowerPath.Contains("metallic") || lowerPath.Contains("metalness"))
+                            {
+                                material.MetallicTexture = texturePath;
+                                Logger.LogLine($"Applied metallic texture {texturePath} to material {material.Path}");
+                            }
+                            else if (lowerPath.Contains("_r.") || lowerPath.Contains("roughness"))
+                            {
+                                material.RoughnessTexture = texturePath;
+                                Logger.LogLine($"Applied roughness texture {texturePath} to material {material.Path}");
+                            }
+                            else if (lowerPath.Contains("_ao.") || lowerPath.Contains("occlusion") || lowerPath.Contains("ambient"))
+                            {
+                                material.OcclusionTexture = texturePath;
+                                Logger.LogLine($"Applied occlusion texture {texturePath} to material {material.Path}");
+                            }
+                            else if (lowerPath.Contains("emissive"))
+                            {
+                                material.EmissiveTexture = texturePath;
+                                Logger.LogLine($"Applied emissive texture {texturePath} to material {material.Path}");
+                            }
+                            else
+                            {
+                                // If no pattern matches, assume it's a diffuse texture
+                                if (string.IsNullOrEmpty(material.DiffuseTexture))
+                                {
+                                    material.DiffuseTexture = texturePath;
+                                    Logger.LogLine($"Applied texture {texturePath} as diffuse (no pattern match) to material {material.Path}");
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Logger.LogLine($"  UsdUVTexture shader has no inputs:file");
+                    }
+                }
+            }
+        }
+
+        private string GetParentPath(string path)
+        {
+            var lastSlash = path.LastIndexOf('/');
+            if (lastSlash > 0)
+            {
+                return path.Substring(0, lastSlash);
+            }
+            return "/";
         }
 
         public void ReadUsdc(Stream stream)

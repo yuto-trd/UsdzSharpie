@@ -15,6 +15,7 @@ namespace UsdzSharpie.Viewer
 
         public Matrix4d Transform { get; set; }
         public Vector3 Color { get; set; }
+        public Texture DiffuseTexture { get; set; }
 
         public MeshRenderer(UsdcMesh mesh)
         {
@@ -77,6 +78,18 @@ namespace UsdzSharpie.Viewer
 
             vertexCount = mesh.Vertices.Length;
 
+            // Debug: Check texture coordinates
+            if (hasTexCoords && mesh.TexCoords.Length > 0)
+            {
+                Console.WriteLine($"First 3 TexCoords: ({mesh.TexCoords[0].X}, {mesh.TexCoords[0].Y}), " +
+                    $"({mesh.TexCoords[Math.Min(1, mesh.TexCoords.Length - 1)].X}, {mesh.TexCoords[Math.Min(1, mesh.TexCoords.Length - 1)].Y}), " +
+                    $"({mesh.TexCoords[Math.Min(2, mesh.TexCoords.Length - 1)].X}, {mesh.TexCoords[Math.Min(2, mesh.TexCoords.Length - 1)].Y})");
+            }
+            else
+            {
+                Console.WriteLine("No texture coordinates available!");
+            }
+
             // Create VAO
             vao = GL.GenVertexArray();
             GL.BindVertexArray(vao);
@@ -132,6 +145,22 @@ namespace UsdzSharpie.Viewer
 
             shader.SetMatrix4("model", transform);
             shader.SetVector3("objectColor", Color);
+
+            // Bind texture if available
+            if (DiffuseTexture != null)
+            {
+                GL.ActiveTexture(TextureUnit.Texture0);
+                DiffuseTexture.Use(TextureUnit.Texture0);
+                shader.SetInt("diffuseTexture", 0);
+                shader.SetBool("hasTexture", true);
+            }
+            else
+            {
+                // Explicitly unbind texture and disable texture usage
+                GL.ActiveTexture(TextureUnit.Texture0);
+                GL.BindTexture(TextureTarget.Texture2D, 0);
+                shader.SetBool("hasTexture", false);
+            }
 
             GL.BindVertexArray(vao);
 
