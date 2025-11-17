@@ -1,3 +1,5 @@
+# docker build -f UsdzSharpie.Server/Dockerfile -t usdz-renderer .
+# docker run -d --name usdz-server -p 8080:8080 usdz-renderer
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src

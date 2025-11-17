@@ -86,7 +86,7 @@ namespace UsdzSharpie.Viewer
                         renderer.Transform = meshNode.GetWorldTransform();
 
                         // Try to get material color
-                        UsdcMaterial material = null;
+                        UsdcMaterial? material = null;
                         if (!string.IsNullOrEmpty(meshNode.Mesh.MaterialPath) && scene.Materials.ContainsKey(meshNode.Mesh.MaterialPath))
                         {
                             material = scene.Materials[meshNode.Mesh.MaterialPath];

@@ -43,7 +43,7 @@ app.MapPost("/render", async ([FromForm] IFormFile usdzFile, [FromForm] string v
         CameraViewpoint[] viewpoints;
         try
         {
-            var viewpointDtos = JsonSerializer.Deserialize<ViewpointDto[]>(viewpointsJson);
+            var viewpointDtos = JsonSerializer.Deserialize<ViewpointDto[]>(viewpointsJson, JsonSerializerOptions.Web);
             if (viewpointDtos == null || viewpointDtos.Length == 0)
             {
                 viewpoints = new[]

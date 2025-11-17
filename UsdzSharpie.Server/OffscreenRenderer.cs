@@ -86,7 +86,14 @@ namespace UsdzSharpie.Server
 
             // Build scene
             var meshRenderers = new List<MeshRenderer>();
-            var textures = new Dictionary<string, Texture>();
+            var textures = new HashSet<Texture>();
+
+            // Get the first material (if any)
+            UsdcMaterial? defaultMaterial = null;
+            if (scene.Materials.Count > 0)
+            {
+                defaultMaterial = scene.Materials.Values.First();
+            }
 
             foreach (var meshNode in scene.GetMeshNodes())
             {
@@ -101,6 +108,10 @@ namespace UsdzSharpie.Server
                     {
                         material = scene.Materials[meshNode.Mesh.MaterialPath];
                     }
+                    else if (defaultMaterial != null)
+                    {
+                        material = defaultMaterial;
+                    }
 
                     if (material != null)
                     {
@@ -109,16 +120,13 @@ namespace UsdzSharpie.Server
                         // Load texture if available
                         if (!string.IsNullOrEmpty(material.DiffuseTexture))
                         {
-                            if (!textures.TryGetValue(material.DiffuseTexture, out var texture))
+                            var imageData = usdzReader.GetTexture(material.DiffuseTexture);
+                            if (imageData != null)
                             {
-                                var imageData = usdzReader.GetTexture(material.DiffuseTexture);
-                                if (imageData != null)
-                                {
-                                    texture = new Texture(imageData);
-                                    textures[material.DiffuseTexture] = texture;
-                                }
+                                var texture = new Texture(imageData);
+                                renderer.DiffuseTexture = texture;
+                                textures.Add(texture);
                             }
-                            renderer.DiffuseTexture = texture;
                         }
                     }
 
@@ -136,6 +144,7 @@ namespace UsdzSharpie.Server
             GL.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             GL.Enable(EnableCap.DepthTest);
+            GL.Enable(EnableCap.CullFace);
             GL.CullFace(TriangleFace.Back);
 
             var shader = new Shader();
@@ -166,7 +175,7 @@ namespace UsdzSharpie.Server
             {
                 renderer.Dispose();
             }
-            foreach (var texture in textures.Values)
+            foreach (var texture in textures)
             {
                 texture.Dispose();
             }
