@@ -149,14 +149,27 @@ namespace UsdzSharpie
             }
         }
 
-        public bool IsArray => (Flags & ((ulong)1 << 63)) > 0;
+        public bool IsArray => (Flags & (1UL << 63)) > 0;
 
-        public bool IsInlined => (Flags & ((ulong)1 << 62)) > 0;
+        public bool IsInlined => (Flags & (1UL << 62)) > 0;
 
-        public bool IsCompressed => (Flags & ((ulong)1 << 61)) > 0;
+        public bool IsCompressed => (Flags & (1UL << 61)) > 0;
 
-        public ulong Payload => (Flags & ((ulong)1 << 48) - 1);
-
-
+        public ulong Payload
+        {
+            get
+            {
+                try
+                {
+                    Console.WriteLine($"Extracting Payload from Flags: {Flags}");
+                    return unchecked(Flags & ((1UL << 48) - 1));
+                }
+                catch
+                {
+                    Console.WriteLine($"Error extracting Payload from Flags: {Flags}");
+                    throw;
+                }
+            }
+        }
     }
 }

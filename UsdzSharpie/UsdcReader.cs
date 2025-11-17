@@ -46,6 +46,26 @@ namespace UsdzSharpie
             return buffer;
         }
 
+        private void SetStreamPosition(BinaryReader binaryReader, ulong offset)
+        {
+            // Validate offset is within valid range for stream position
+            if (offset > (ulong)long.MaxValue)
+            {
+                throw new Exception($"Offset {offset} is too large (exceeds long.MaxValue {long.MaxValue})");
+            }
+
+            // Validate offset doesn't exceed stream length
+            var streamLength = binaryReader.BaseStream.Length;
+            if (streamLength >= 0 && offset > (ulong)streamLength)
+            {
+                throw new Exception($"Offset {offset} exceeds stream length {streamLength}");
+            }
+
+            // Use unchecked to prevent overflow exceptions during cast
+            // The validation above ensures the value is safe
+            binaryReader.BaseStream.Position = unchecked((long)offset);
+        }
+
         private UsdcVersion ReadVersion(BinaryReader binaryReader)
         {
             var version = new UsdcVersion
@@ -115,7 +135,7 @@ namespace UsdzSharpie
         {
             Logger.LogLine($"sec.start = {offset}");
 
-            binaryReader.BaseStream.Position = (long)offset;
+            SetStreamPosition(binaryReader, offset);
 
             var tokenCount = binaryReader.ReadUInt64();
             var uncompressedSize = binaryReader.ReadUInt64();
@@ -142,7 +162,7 @@ namespace UsdzSharpie
 
         private int[] ReadStrings(BinaryReader binaryReader, ulong offset, ulong size)
         {
-            binaryReader.BaseStream.Position = (long)offset;
+            SetStreamPosition(binaryReader, offset);
 
             var indexCount = binaryReader.ReadUInt64();
 
@@ -202,7 +222,7 @@ namespace UsdzSharpie
 
         private UsdcField[] ReadFields(BinaryReader binaryReader, ulong offset, ulong size)
         {
-            binaryReader.BaseStream.Position = (long)offset;
+            SetStreamPosition(binaryReader, offset);
 
             var fieldCount = binaryReader.ReadUInt64();
             var fieldSize = binaryReader.ReadUInt64();
@@ -243,7 +263,7 @@ namespace UsdzSharpie
 
         private int[] ReadFieldSets(BinaryReader binaryReader, ulong offset, ulong size)
         {
-            binaryReader.BaseStream.Position = (long)offset;
+            SetStreamPosition(binaryReader, offset);
 
             var fieldSetCount = binaryReader.ReadUInt64();
             var fieldSetSize = binaryReader.ReadUInt64();
@@ -407,7 +427,7 @@ namespace UsdzSharpie
 
         private void ReadPaths(BinaryReader binaryReader, ulong offset, ulong size, out UsdcPath[] paths, out UsdcNode[] nodes)
         {
-            binaryReader.BaseStream.Position = (long)offset;
+            SetStreamPosition(binaryReader, offset);
 
             var pathCount = binaryReader.ReadUInt64();
 
@@ -484,7 +504,7 @@ namespace UsdzSharpie
 
         private UsdcSpec[] ReadSpecs(BinaryReader binaryReader, ulong offset, ulong size)
         {
-            binaryReader.BaseStream.Position = (long)offset;
+            SetStreamPosition(binaryReader, offset);
 
             var specCount = binaryReader.ReadUInt64(); 
 
@@ -1213,7 +1233,9 @@ namespace UsdzSharpie
         private object UnpackNotInlined(BinaryReader binaryReader, UsdcField field)
         {
             var offset = field.Payload;
-            binaryReader.BaseStream.Position = (long)offset;
+            Console.WriteLine($"offset = {offset}");
+
+            SetStreamPosition(binaryReader, offset);
 
             if (field.Type == UsdcField.ValueTypeId.ValueTypeToken)
             {
@@ -1388,7 +1410,7 @@ namespace UsdzSharpie
                 {
                     var count = binaryReader.ReadUInt64();
                     var values = new Vec3f[count];
-                    for (var i = 0; i < (int)count; i++)
+                    for (var i = 0UL; i < count; i++)
                     {
                         var x = binaryReader.ReadSingle();
                         var y = binaryReader.ReadSingle();
@@ -1745,9 +1767,20 @@ namespace UsdzSharpie
 
                     for (var j = start; j < start + count; j++)
                     {
-                        Logger.LogLine($"fieldIndex = {fieldSetIndices[j]}");
+                        var fieldIndex = fieldSetIndices[j];
+                        Logger.LogLine($"fieldIndex = {fieldIndex}");
 
-                        var field = fields[fieldSetIndices[j]];
+                        // Validate field index is within bounds
+                        if (fieldIndex < 0 || fieldIndex >= fields.Length)
+                        {
+                            throw new Exception($"Field index {fieldIndex} is out of range (fields.Length = {fields.Length})");
+                        }
+
+                        var field = fields[fieldIndex];
+
+                        // Log field details for debugging
+                        Logger.LogLine($"field.Name = {field.Name}, field.Flags = 0x{field.Flags:X16}, field.Payload = {field.Payload}");
+
                         var first = field.Name;
                         var second = UnpackField(binaryReader, field);
 
