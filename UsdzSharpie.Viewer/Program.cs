@@ -18,11 +18,11 @@ namespace UsdzSharpie.Viewer
         private Camera camera;
         private Shader shader;
 
-        private float cameraDistance = 5.0f;
-        private float cameraRotationX = 0.0f;
-        private float cameraRotationY = 0.0f;
+        private float cameraSpeed = 2.5f;
+        private float mouseSensitivity = 0.1f;
         private Vector2 lastMousePos;
         private bool isDragging = false;
+        private bool firstMouse = true;
 
         public UsdzViewer(string usdzPath, GameWindowSettings gameWindowSettings, NativeWindowSettings nativeWindowSettings)
             : base(gameWindowSettings, nativeWindowSettings)
@@ -64,7 +64,7 @@ namespace UsdzSharpie.Viewer
             shader = new Shader();
 
             // Initialize camera
-            camera = new Camera(Vector3.UnitZ * cameraDistance, Size.X / (float)Size.Y);
+            camera = new Camera(new Vector3(0.0f, 1.0f, 5.0f), Size.X / (float)Size.Y);
 
             // Create mesh renderers
             if (scene != null && scene.Meshes.Count > 0)
@@ -149,13 +149,6 @@ namespace UsdzSharpie.Viewer
 
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-            // Update camera position based on rotation
-            float x = (float)(Math.Sin(cameraRotationY) * Math.Cos(cameraRotationX)) * cameraDistance;
-            float y = (float)(Math.Sin(cameraRotationX)) * cameraDistance;
-            float z = (float)(Math.Cos(cameraRotationY) * Math.Cos(cameraRotationX)) * cameraDistance;
-            camera.Position = new Vector3(x, y, z);
-            camera.Front = -camera.Position.Normalized();
-
             shader.Use();
 
             // Set view and projection matrices
@@ -190,16 +183,55 @@ namespace UsdzSharpie.Viewer
                 Close();
             }
 
-            // Zoom with mouse wheel
-            var mouse = MouseState;
+            // Calculate movement speed based on frame time
+            float velocity = cameraSpeed * (float)args.Time;
+
+            // WASD movement
+            if (input.IsKeyDown(Keys.W))
+            {
+                camera.Position += camera.Front * velocity;
+            }
+            if (input.IsKeyDown(Keys.S))
+            {
+                camera.Position -= camera.Front * velocity;
+            }
+            if (input.IsKeyDown(Keys.A))
+            {
+                camera.Position -= camera.Right * velocity;
+            }
+            if (input.IsKeyDown(Keys.D))
+            {
+                camera.Position += camera.Right * velocity;
+            }
+
+            // E/Q for up/down movement
+            if (input.IsKeyDown(Keys.E))
+            {
+                camera.Position += camera.Up * velocity;
+            }
+            if (input.IsKeyDown(Keys.Q))
+            {
+                camera.Position -= camera.Up * velocity;
+            }
+
+            // Shift for faster movement
+            if (input.IsKeyDown(Keys.LeftShift))
+            {
+                cameraSpeed = 5.0f;
+            }
+            else
+            {
+                cameraSpeed = 2.5f;
+            }
         }
 
         protected override void OnMouseWheel(MouseWheelEventArgs e)
         {
             base.OnMouseWheel(e);
 
-            cameraDistance -= e.OffsetY * 0.5f;
-            cameraDistance = Math.Clamp(cameraDistance, 0.5f, 50.0f);
+            // Adjust FOV for zoom effect
+            camera.Fov -= e.OffsetY * 2.0f;
+            camera.Fov = Math.Clamp(camera.Fov, 1.0f, 90.0f);
         }
 
         protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -220,6 +252,7 @@ namespace UsdzSharpie.Viewer
             if (e.Button == MouseButton.Left)
             {
                 isDragging = false;
+                firstMouse = true;
             }
         }
 
@@ -230,16 +263,38 @@ namespace UsdzSharpie.Viewer
             if (isDragging)
             {
                 var currentMousePos = new Vector2(e.X, e.Y);
+
+                if (firstMouse)
+                {
+                    lastMousePos = currentMousePos;
+                    firstMouse = false;
+                }
+
                 var delta = currentMousePos - lastMousePos;
 
-                cameraRotationY += delta.X * 0.005f;
-                cameraRotationX += delta.Y * 0.005f;
+                camera.Yaw += delta.X * mouseSensitivity;
+                camera.Pitch -= delta.Y * mouseSensitivity;
 
                 // Clamp vertical rotation
-                cameraRotationX = Math.Clamp(cameraRotationX, -MathF.PI / 2 + 0.1f, MathF.PI / 2 - 0.1f);
+                camera.Pitch = Math.Clamp(camera.Pitch, -89.0f, 89.0f);
+
+                // Update camera vectors
+                UpdateCameraVectors();
 
                 lastMousePos = currentMousePos;
             }
+        }
+
+        private void UpdateCameraVectors()
+        {
+            Vector3 front;
+            front.X = (float)(Math.Cos(MathHelper.DegreesToRadians(camera.Yaw)) * Math.Cos(MathHelper.DegreesToRadians(camera.Pitch)));
+            front.Y = (float)Math.Sin(MathHelper.DegreesToRadians(camera.Pitch));
+            front.Z = (float)(Math.Sin(MathHelper.DegreesToRadians(camera.Yaw)) * Math.Cos(MathHelper.DegreesToRadians(camera.Pitch)));
+            camera.Front = Vector3.Normalize(front);
+
+            camera.Right = Vector3.Normalize(Vector3.Cross(camera.Front, camera.WorldUp));
+            camera.Up = Vector3.Normalize(Vector3.Cross(camera.Right, camera.Front));
         }
 
         protected override void OnResize(ResizeEventArgs e)
