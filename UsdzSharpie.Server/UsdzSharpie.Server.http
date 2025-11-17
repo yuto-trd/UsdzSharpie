@@ -1,0 +1,6 @@
+@UsdzSharpie.Server_HostAddress = http://localhost:5030
+
+GET {{UsdzSharpie.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
