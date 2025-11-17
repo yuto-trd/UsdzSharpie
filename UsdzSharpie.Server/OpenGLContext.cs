@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using OpenTK;
 using OpenTK.Graphics.OpenGL;
 
 namespace UsdzSharpie.Server
@@ -58,11 +59,7 @@ namespace UsdzSharpie.Server
             }
 
             // Load OpenGL function pointers using OSMesa
-            // OpenTK needs a custom bindings context for OSMesa
-            var loader = new OSMesaProcLoader();
-            typeof(GL).GetMethod("LoadBindings",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)?
-                .Invoke(null, new object[] { loader });
+            GL.LoadBindings(new OSMesaProcLoader());
 
             Console.WriteLine($"OSMesa Context initialized:");
             Console.WriteLine($"  Vendor: {GL.GetString(StringName.Vendor)}");
@@ -94,7 +91,7 @@ namespace UsdzSharpie.Server
             }
         }
 
-        private class OSMesaProcLoader
+        private class OSMesaProcLoader : IBindingsContext
         {
             public IntPtr GetProcAddress(string procName)
             {

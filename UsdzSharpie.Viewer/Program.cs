@@ -331,18 +331,19 @@ namespace UsdzSharpie.Viewer
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Usage: UsdzSharpie.Viewer <path_to_usdz_file>");
-                Console.WriteLine("\nExample USDZ files available in Examples folder:");
-                var examplesPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "Examples");
-                if (Directory.Exists(examplesPath))
-                {
-                    var usdzFiles = Directory.GetFiles(examplesPath, "*.usdz");
-                    foreach (var file in usdzFiles)
-                    {
-                        Console.WriteLine($"  {Path.GetFileName(file)}");
-                    }
-                }
-                return;
+                // Console.WriteLine("Usage: UsdzSharpie.Viewer <path_to_usdz_file>");
+                // Console.WriteLine("\nExample USDZ files available in Examples folder:");
+                // var examplesPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "Examples");
+                // if (Directory.Exists(examplesPath))
+                // {
+                //     var usdzFiles = Directory.GetFiles(examplesPath, "*.usdz");
+                //     foreach (var file in usdzFiles)
+                //     {
+                //         Console.WriteLine($"  {Path.GetFileName(file)}");
+                //     }
+                // }
+                // return;
+                args = ["/Users/teradatakeshishou/Documents/source/名称未設定オブジェクト.usdz"];
             }
 
             string usdzPath = args[0];

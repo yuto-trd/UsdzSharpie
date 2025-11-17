@@ -69,7 +69,7 @@ namespace UsdzSharpie.Server
             // You can extend this to handle multiple viewpoints and return multiple images
             var viewpoint = viewpoints.Length > 0 ? viewpoints[0] : new CameraViewpoint
             {
-                Position = new Vector3(3, 3, 3),
+                Position = new Vector3(0.1f, 0.1f, 0.1f),
                 Target = Vector3.Zero,
                 Fov = 45.0f
             };
@@ -133,9 +133,10 @@ namespace UsdzSharpie.Server
             // Render
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
             GL.Viewport(0, 0, width, height);
-            GL.ClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+            GL.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             GL.Enable(EnableCap.DepthTest);
+            GL.CullFace(TriangleFace.Back);
 
             var shader = new Shader();
             shader.Use();
@@ -154,7 +155,8 @@ namespace UsdzSharpie.Server
 
             // Read pixels
             byte[] pixels = new byte[width * height * 4];
-            GL.ReadPixels(0, 0, width, height, PixelFormat.Rgba, PixelType.UnsignedByte, pixels);
+            GL.ReadBuffer(ReadBufferMode.ColorAttachment0);
+            GL.ReadPixels(0, 0, width, height, PixelFormat.Bgra, PixelType.UnsignedByte, pixels);
 
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
 
@@ -176,7 +178,7 @@ namespace UsdzSharpie.Server
         private byte[] EncodeImage(byte[] pixels, int width, int height, ImageFormat format)
         {
             // Create a bitmap from the pixel data
-            var imageInfo = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
+            var imageInfo = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
 
             // Flip the image vertically (OpenGL renders bottom-up, we want top-down)
             var flippedPixels = new byte[pixels.Length];
