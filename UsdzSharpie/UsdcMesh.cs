@@ -14,6 +14,7 @@ namespace UsdzSharpie
         public Vec3f[] Vertices { get; set; }
         public Vec3f[] Normals { get; set; }
         public Vec2f[] TexCoords { get; set; }
+        public int[] TexCoordIndices { get; set; } // Indices for faceVarying texture coordinates
         public Vec3i[] FaceVertexIndices { get; set; } // Triangulated indices (deprecated, use RawFaceVertexIndices)
         public int[] RawFaceVertexIndices { get; set; } // Raw indices from USD file
         public int[] FaceVertexCounts { get; set; } // Number of vertices per face

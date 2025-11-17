@@ -35,10 +35,25 @@ namespace UsdzSharpie.Viewer
                 mesh.ComputeNormals();
             }
 
-            // Create vertex data (position + normal + texcoord)
             var hasNormals = mesh.Normals != null && mesh.Normals.Length > 0;
             var hasTexCoords = mesh.TexCoords != null && mesh.TexCoords.Length > 0;
+            var hasFaceVaryingTexCoords = hasTexCoords && mesh.TexCoordIndices != null && mesh.TexCoordIndices.Length > 0;
 
+            // Check if we need to expand vertices for faceVarying texture coordinates
+            if (hasFaceVaryingTexCoords)
+            {
+                Console.WriteLine($"FaceVarying texture coords: {mesh.TexCoords.Length} coords, {mesh.TexCoordIndices.Length} indices");
+                CreateExpandedMesh(mesh, hasNormals);
+            }
+            else
+            {
+                Console.WriteLine($"Vertex texture coords: {mesh.TexCoords?.Length ?? 0} coords");
+                CreateIndexedMesh(mesh, hasNormals, hasTexCoords);
+            }
+        }
+
+        private void CreateIndexedMesh(UsdcMesh mesh, bool hasNormals, bool hasTexCoords)
+        {
             var stride = 8; // 3 (pos) + 3 (normal) + 2 (texcoord)
             var vertexData = new float[mesh.Vertices.Length * stride];
 
@@ -78,18 +93,6 @@ namespace UsdzSharpie.Viewer
 
             vertexCount = mesh.Vertices.Length;
 
-            // Debug: Check texture coordinates
-            if (hasTexCoords && mesh.TexCoords.Length > 0)
-            {
-                Console.WriteLine($"First 3 TexCoords: ({mesh.TexCoords[0].X}, {mesh.TexCoords[0].Y}), " +
-                    $"({mesh.TexCoords[Math.Min(1, mesh.TexCoords.Length - 1)].X}, {mesh.TexCoords[Math.Min(1, mesh.TexCoords.Length - 1)].Y}), " +
-                    $"({mesh.TexCoords[Math.Min(2, mesh.TexCoords.Length - 1)].X}, {mesh.TexCoords[Math.Min(2, mesh.TexCoords.Length - 1)].Y})");
-            }
-            else
-            {
-                Console.WriteLine("No texture coordinates available!");
-            }
-
             // Create VAO
             vao = GL.GenVertexArray();
             GL.BindVertexArray(vao);
@@ -111,24 +114,151 @@ namespace UsdzSharpie.Viewer
             GL.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, stride * sizeof(float), 6 * sizeof(float));
             GL.EnableVertexAttribArray(2);
 
-            // Create index buffer if available
+            // Create index buffer
             var indices = mesh.GetTriangulatedIndices();
             if (indices != null && indices.Length > 0)
             {
                 indexCount = indices.Length;
-
                 ebo = GL.GenBuffer();
                 GL.BindBuffer(BufferTarget.ElementArrayBuffer, ebo);
                 GL.BufferData(BufferTarget.ElementArrayBuffer, indices.Length * sizeof(int), indices, BufferUsageHint.StaticDraw);
             }
-            else
-            {
-                indexCount = 0;
-            }
 
             GL.BindVertexArray(0);
+            Console.WriteLine($"MeshRenderer created (indexed): {vertexCount} vertices, {indexCount} indices");
+        }
 
-            Console.WriteLine($"MeshRenderer created: {vertexCount} vertices, {indexCount} indices");
+        private void CreateExpandedMesh(UsdcMesh mesh, bool hasNormals)
+        {
+            // For faceVarying texture coordinates, we need to expand the mesh
+            // Each face vertex gets its own position, normal, and texcoord
+            var stride = 8; // 3 (pos) + 3 (normal) + 2 (texcoord)
+            var expandedVertices = new System.Collections.Generic.List<float>();
+
+            // Check if we have valid texture coordinate indices
+            bool hasValidTexCoordIndices = mesh.TexCoordIndices != null &&
+                                          mesh.TexCoordIndices.Length >= mesh.RawFaceVertexIndices.Length;
+
+            if (!hasValidTexCoordIndices)
+            {
+                Console.WriteLine($"Warning: TexCoordIndices length mismatch. Expected {mesh.RawFaceVertexIndices?.Length ?? 0}, got {mesh.TexCoordIndices?.Length ?? 0}");
+                // Fall back to indexed mesh if texture coordinate indices don't match
+                CreateIndexedMesh(mesh, hasNormals, mesh.TexCoords != null && mesh.TexCoords.Length > 0);
+                return;
+            }
+
+            int faceVertexOffset = 0;
+            foreach (var faceVertexCount in mesh.FaceVertexCounts)
+            {
+                // Triangulate the face
+                var triangles = new System.Collections.Generic.List<int[]>();
+                if (faceVertexCount == 3)
+                {
+                    triangles.Add(new[] { 0, 1, 2 });
+                }
+                else if (faceVertexCount == 4)
+                {
+                    triangles.Add(new[] { 0, 1, 2 });
+                    triangles.Add(new[] { 0, 2, 3 });
+                }
+                else if (faceVertexCount > 4)
+                {
+                    // Fan triangulation
+                    for (int i = 1; i < faceVertexCount - 1; i++)
+                    {
+                        triangles.Add(new[] { 0, i, i + 1 });
+                    }
+                }
+
+                // Add vertices for each triangle
+                foreach (var tri in triangles)
+                {
+                    for (int i = 0; i < 3; i++)
+                    {
+                        int localIdx = tri[i];
+                        int faceVertexIndex = faceVertexOffset + localIdx;
+
+                        // Bounds check
+                        if (faceVertexIndex >= mesh.RawFaceVertexIndices.Length)
+                        {
+                            Console.WriteLine($"Warning: Face vertex index {faceVertexIndex} out of range");
+                            continue;
+                        }
+
+                        int vertexIdx = mesh.RawFaceVertexIndices[faceVertexIndex];
+                        int texCoordIdx = mesh.TexCoordIndices[faceVertexIndex];
+
+                        // Position
+                        if (vertexIdx >= mesh.Vertices.Length)
+                        {
+                            Console.WriteLine($"Warning: Vertex index {vertexIdx} out of range");
+                            continue;
+                        }
+
+                        var v = mesh.Vertices[vertexIdx];
+                        expandedVertices.Add(v.X);
+                        expandedVertices.Add(v.Y);
+                        expandedVertices.Add(v.Z);
+
+                        // Normal
+                        if (hasNormals && vertexIdx < mesh.Normals.Length)
+                        {
+                            var n = mesh.Normals[vertexIdx];
+                            expandedVertices.Add(n.X);
+                            expandedVertices.Add(n.Y);
+                            expandedVertices.Add(n.Z);
+                        }
+                        else
+                        {
+                            expandedVertices.Add(0.0f);
+                            expandedVertices.Add(1.0f);
+                            expandedVertices.Add(0.0f);
+                        }
+
+                        // TexCoord
+                        if (texCoordIdx >= 0 && texCoordIdx < mesh.TexCoords.Length)
+                        {
+                            var t = mesh.TexCoords[texCoordIdx];
+                            expandedVertices.Add(t.X);
+                            expandedVertices.Add(t.Y);
+                        }
+                        else
+                        {
+                            expandedVertices.Add(0.0f);
+                            expandedVertices.Add(0.0f);
+                        }
+                    }
+                }
+
+                faceVertexOffset += faceVertexCount;
+            }
+
+            vertexCount = expandedVertices.Count / stride;
+            indexCount = 0; // No index buffer for expanded mesh
+
+            // Create VAO
+            vao = GL.GenVertexArray();
+            GL.BindVertexArray(vao);
+
+            // Create VBO
+            vbo = GL.GenBuffer();
+            GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
+            GL.BufferData(BufferTarget.ArrayBuffer, expandedVertices.Count * sizeof(float), expandedVertices.ToArray(), BufferUsageHint.StaticDraw);
+
+            // Position attribute
+            GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, stride * sizeof(float), 0);
+            GL.EnableVertexAttribArray(0);
+
+            // Normal attribute
+            GL.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, stride * sizeof(float), 3 * sizeof(float));
+            GL.EnableVertexAttribArray(1);
+
+            // TexCoord attribute
+            GL.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, stride * sizeof(float), 6 * sizeof(float));
+            GL.EnableVertexAttribArray(2);
+
+            GL.BindVertexArray(0);
+            Console.WriteLine($"MeshRenderer created (expanded): {vertexCount} vertices");
         }
 
         public void Draw(Shader shader)

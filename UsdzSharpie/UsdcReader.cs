@@ -2035,6 +2035,14 @@ namespace UsdzSharpie
                     }
                     break;
 
+                case "primvars:st:indices":
+                    if (value is int[] texCoordIndices)
+                    {
+                        sceneNode.Mesh.TexCoordIndices = texCoordIndices;
+                        Logger.LogLine($"    Extracted {texCoordIndices.Length} texture coordinate indices");
+                    }
+                    break;
+
                 case "faceVertexIndices":
                     if (value is int[] indices)
                     {
