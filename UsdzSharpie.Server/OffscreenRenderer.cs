@@ -60,7 +60,7 @@ namespace UsdzSharpie.Server
             Console.WriteLine($"Offscreen renderer initialized: {width}x{height}");
         }
 
-        public byte[] RenderToImage(string usdzPath, CameraViewpoint[] viewpoints, ImageFormat format = ImageFormat.Png)
+        public byte[] RenderToImage(string usdzPath, CameraViewpoint[] viewpoints, ImageFormat format = ImageFormat.Png, bool enableLighting = true)
         {
             if (!isInitialized)
                 Initialize();
@@ -229,6 +229,7 @@ namespace UsdzSharpie.Server
             shader.SetMatrix4("projection", projection);
             shader.SetVector3("viewPos", camera.Position);
             shader.SetVector3("lightPos", new Vector3(5, 5, 5));
+            shader.SetBool("enableLighting", enableLighting);
 
             foreach (var renderer in meshRenderers)
             {

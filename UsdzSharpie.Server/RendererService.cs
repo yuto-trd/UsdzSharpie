@@ -22,7 +22,7 @@ namespace UsdzSharpie.Server
             }
         }
 
-        public byte[] Render(string usdzPath, CameraViewpoint[] viewpoints, int width, int height, ImageFormat format)
+        public byte[] Render(string usdzPath, CameraViewpoint[] viewpoints, int width, int height, ImageFormat format, bool enableLighting = true)
         {
             lock (lockObject)
             {
@@ -35,7 +35,7 @@ namespace UsdzSharpie.Server
                 OpenGLContext.Instance.MakeCurrent();
 
                 using var renderer = new OffscreenRenderer(width, height);
-                return renderer.RenderToImage(usdzPath, viewpoints, format);
+                return renderer.RenderToImage(usdzPath, viewpoints, format, enableLighting);
             }
         }
     }

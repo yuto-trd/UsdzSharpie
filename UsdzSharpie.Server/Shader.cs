@@ -44,26 +44,10 @@ uniform vec3 lightPos;
 uniform vec3 objectColor;
 uniform sampler2D diffuseTexture;
 uniform bool hasTexture;
+uniform bool enableLighting;
 
 void main()
 {
-    // Ambient
-    float ambientStrength = 0.3;
-    vec3 ambient = ambientStrength * vec3(1.0, 1.0, 1.0);
-
-    // Diffuse
-    vec3 norm = normalize(Normal);
-    vec3 lightDir = normalize(lightPos - FragPos);
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = diff * vec3(1.0, 1.0, 1.0);
-
-    // Specular
-    float specularStrength = 0.5;
-    vec3 viewDir = normalize(viewPos - FragPos);
-    vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-    vec3 specular = specularStrength * spec * vec3(1.0, 1.0, 1.0);
-
     // Get base color from texture or uniform
     vec3 baseColor = objectColor;
     if (hasTexture)
@@ -72,7 +56,34 @@ void main()
         baseColor = texColor.rgb;
     }
 
-    vec3 result = (ambient + diffuse + specular) * baseColor;
+    vec3 result;
+    if (enableLighting)
+    {
+        // Ambient
+        float ambientStrength = 0.3;
+        vec3 ambient = ambientStrength * vec3(1.0, 1.0, 1.0);
+
+        // Diffuse
+        vec3 norm = normalize(Normal);
+        vec3 lightDir = normalize(lightPos - FragPos);
+        float diff = max(dot(norm, lightDir), 0.0);
+        vec3 diffuse = diff * vec3(1.0, 1.0, 1.0);
+
+        // Specular
+        float specularStrength = 0.5;
+        vec3 viewDir = normalize(viewPos - FragPos);
+        vec3 reflectDir = reflect(-lightDir, norm);
+        float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+        vec3 specular = specularStrength * spec * vec3(1.0, 1.0, 1.0);
+
+        result = (ambient + diffuse + specular) * baseColor;
+    }
+    else
+    {
+        // No lighting, just use the base color
+        result = baseColor;
+    }
+
     FragColor = vec4(result, 1.0);
 }
 ";

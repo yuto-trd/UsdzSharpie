@@ -23,7 +23,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapPost("/render", async ([FromForm] IFormFile usdzFile, [FromForm] string viewpointsJson, [FromForm] int width = 800, [FromForm] int height = 600, [FromForm] string format = "png") =>
+app.MapPost("/render", async ([FromForm] IFormFile usdzFile, [FromForm] string viewpointsJson, [FromForm] int width = 800, [FromForm] int height = 600, [FromForm] string format = "png", [FromForm] bool enableLighting = true) =>
 {
     if (usdzFile == null || usdzFile.Length == 0)
     {
@@ -88,7 +88,7 @@ app.MapPost("/render", async ([FromForm] IFormFile usdzFile, [FromForm] string v
         };
 
         // Render
-        var imageData = rendererService.Render(tempPath, viewpoints, width, height, imageFormat);
+        var imageData = rendererService.Render(tempPath, viewpoints, width, height, imageFormat, enableLighting);
 
         // Return image
         var contentType = imageFormat switch
@@ -150,6 +150,11 @@ app.MapGet("/", () => Results.Content(@"
             <option value=""webp"">WebP</option>
         </select>
 
+        <label>
+            <input type=""checkbox"" id=""enableLighting"" checked>
+            Enable Lighting (陰影あり)
+        </label>
+
         <label>Viewpoints (JSON):</label>
         <textarea id=""viewpoints"" rows=""8"">[
   {
@@ -177,6 +182,7 @@ app.MapGet("/", () => Results.Content(@"
             formData.append('width', document.getElementById('width').value);
             formData.append('height', document.getElementById('height').value);
             formData.append('format', document.getElementById('format').value);
+            formData.append('enableLighting', document.getElementById('enableLighting').checked);
             formData.append('viewpointsJson', document.getElementById('viewpoints').value);
 
             const result = document.getElementById('result');
