@@ -74,60 +74,31 @@ namespace UsdzSharpie.Server
                 Fov = 45.0f
             };
 
-            // Load USDZ file
-            var usdzReader = new UsdzReader();
-            usdzReader.Read(usdzPath);
-            var scene = usdzReader.GetScene();
+            // Load USDZ file using Assimp
+            using var assimpLoader = new AssimpLoader();
+            var scene = assimpLoader.LoadUsdz(usdzPath);
 
-            if (scene == null)
+            if (scene == null || scene.Meshes.Count == 0)
             {
-                throw new Exception("Failed to load scene from USDZ file");
+                throw new Exception("Failed to load scene from USDZ file or scene is empty");
             }
 
             // Build scene
             var meshRenderers = new List<MeshRenderer>();
             var textures = new HashSet<Texture>();
 
-            // Get the first material (if any)
-            UsdcMaterial? defaultMaterial = null;
-            if (scene.Materials.Count > 0)
+            foreach (var (mesh, transform) in scene.GetAllMeshes())
             {
-                defaultMaterial = scene.Materials.Values.First();
-            }
-
-            foreach (var meshNode in scene.GetMeshNodes())
-            {
-                if (meshNode.Mesh != null && meshNode.Mesh.Vertices.Length > 0)
+                if (mesh.Vertices.Length > 0)
                 {
-                    var renderer = new MeshRenderer(meshNode.Mesh);
-                    renderer.Transform = meshNode.GetWorldTransform();
+                    var renderer = new MeshRenderer(mesh, transform);
 
-                    // Load material
-                    UsdcMaterial? material = null;
-                    if (!string.IsNullOrEmpty(meshNode.Mesh.MaterialPath) && scene.Materials.ContainsKey(meshNode.Mesh.MaterialPath))
+                    // Load texture if available
+                    if (mesh.Material?.DiffuseTextureData != null)
                     {
-                        material = scene.Materials[meshNode.Mesh.MaterialPath];
-                    }
-                    else if (defaultMaterial != null)
-                    {
-                        material = defaultMaterial;
-                    }
-
-                    if (material != null)
-                    {
-                        renderer.Color = new Vector3(material.DiffuseColor.X, material.DiffuseColor.Y, material.DiffuseColor.Z);
-
-                        // Load texture if available
-                        if (!string.IsNullOrEmpty(material.DiffuseTexture))
-                        {
-                            var imageData = usdzReader.GetTexture(material.DiffuseTexture);
-                            if (imageData != null)
-                            {
-                                var texture = new Texture(imageData);
-                                renderer.DiffuseTexture = texture;
-                                textures.Add(texture);
-                            }
-                        }
+                        var texture = new Texture(mesh.Material.DiffuseTextureData);
+                        renderer.DiffuseTexture = texture;
+                        textures.Add(texture);
                     }
 
                     meshRenderers.Add(renderer);
