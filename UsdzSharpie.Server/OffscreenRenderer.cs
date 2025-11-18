@@ -74,35 +74,137 @@ namespace UsdzSharpie.Server
                 Fov = 45.0f
             };
 
-            // Load USDZ file using Assimp
-            using var assimpLoader = new AssimpLoader();
-            var scene = assimpLoader.LoadUsdz(usdzPath);
-
-            if (scene == null || scene.Meshes.Count == 0)
-            {
-                throw new Exception("Failed to load scene from USDZ file or scene is empty");
-            }
-
-            // Build scene
+            // Try loading USDZ file using UsdzReader first
             var meshRenderers = new List<MeshRenderer>();
             var textures = new HashSet<Texture>();
+            bool usedAssimp = false;
 
-            foreach (var (mesh, transform) in scene.GetAllMeshes())
+            try
             {
-                if (mesh.Vertices.Length > 0)
+                Console.WriteLine($"Attempting to load USDZ with UsdzReader: {usdzPath}");
+                var reader = new UsdzReader();
+                reader.Read(usdzPath);
+                var usdcScene = reader.GetScene();
+
+                if (usdcScene != null && usdcScene.Meshes.Count > 0)
                 {
-                    var renderer = new MeshRenderer(mesh, transform);
+                    Console.WriteLine($"Successfully loaded USDZ with UsdzReader. Meshes: {usdcScene.Meshes.Count}");
 
-                    // Load texture if available
-                    if (mesh.Material?.DiffuseTextureData != null)
+                    UsdcMaterial? defaultMaterial = usdcScene.Materials.Values.FirstOrDefault();
+
+                    // Use UsdcMesh directly with MeshRenderer
+                    foreach (var meshNode in usdcScene.GetMeshNodes())
                     {
-                        var texture = new Texture(mesh.Material.DiffuseTextureData);
-                        renderer.DiffuseTexture = texture;
-                        textures.Add(texture);
-                    }
+                        var usdcMesh = meshNode.Mesh;
 
-                    meshRenderers.Add(renderer);
+                        if (usdcMesh.Vertices != null && usdcMesh.Vertices.Length > 0)
+                        {
+                            var renderer = new MeshRenderer(usdcMesh);
+                            var transform = meshNode.GetWorldTransform();
+                            renderer.Transform = new Matrix4(
+                                (float)transform.M00, (float)transform.M01, (float)transform.M02, (float)transform.M03,
+                                (float)transform.M10, (float)transform.M11, (float)transform.M12, (float)transform.M13,
+                                (float)transform.M20, (float)transform.M21, (float)transform.M22, (float)transform.M23,
+                                (float)transform.M30, (float)transform.M31, (float)transform.M32, (float)transform.M33
+                            );
+
+                            // Try to get material color
+                            UsdcMaterial? material = null;
+                            if (!string.IsNullOrEmpty(meshNode.Mesh.MaterialPath) && usdcScene.Materials.ContainsKey(meshNode.Mesh.MaterialPath))
+                            {
+                                material = usdcScene.Materials[meshNode.Mesh.MaterialPath];
+                            }
+                            else if (defaultMaterial != null)
+                            {
+                                material = defaultMaterial;
+                            }
+
+                            if (material != null)
+                            {
+                                renderer.Color = new Vector3(material.DiffuseColor.X, material.DiffuseColor.Y, material.DiffuseColor.Z);
+                                Console.WriteLine($"  Material color: ({material.DiffuseColor.X}, {material.DiffuseColor.Y}, {material.DiffuseColor.Z})");
+
+                                // Try to load diffuse texture
+                                if (!string.IsNullOrEmpty(material.DiffuseTexture))
+                                {
+                                    var textureData = reader.GetTexture(material.DiffuseTexture);
+                                    if (textureData != null)
+                                    {
+                                        try
+                                        {
+                                            renderer.DiffuseTexture = new Texture(textureData);
+                                            Console.WriteLine($"  Loaded texture: {material.DiffuseTexture}");
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine($"  Failed to load texture: {ex.Message}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine($"  Texture not found: {material.DiffuseTexture}");
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Default red color if no material
+                                renderer.Color = new Vector3(0.8f, 0.2f, 0.2f);
+                            }
+
+                            meshRenderers.Add(renderer);
+                        }
+                    }
                 }
+                else
+                {
+                    Console.WriteLine("UsdzReader returned null or empty scene, trying Assimp...");
+                    usedAssimp = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"UsdzReader failed with error: {ex.Message}");
+                Console.WriteLine("Falling back to Assimp loader...");
+                usedAssimp = true;
+            }
+
+            // Fallback to Assimp if UsdzReader failed
+            if (usedAssimp)
+            {
+                using var assimpLoader = new AssimpLoader();
+                var scene = assimpLoader.LoadUsdz(usdzPath);
+
+                if (scene == null || scene.Meshes.Count == 0)
+                {
+                    throw new Exception("Failed to load scene from USDZ file or scene is empty (both UsdzReader and Assimp failed)");
+                }
+
+                Console.WriteLine($"Assimp loaded scene successfully. Meshes: {scene.Meshes.Count}");
+
+                // Build scene from Assimp data
+                foreach (var (mesh, transform) in scene.GetAllMeshes())
+                {
+                    if (mesh.Vertices.Length > 0)
+                    {
+                        var renderer = new MeshRenderer(mesh, transform);
+
+                        // Load texture if available
+                        if (mesh.Material?.DiffuseTextureData != null)
+                        {
+                            var texture = new Texture(mesh.Material.DiffuseTextureData);
+                            renderer.DiffuseTexture = texture;
+                            textures.Add(texture);
+                        }
+
+                        meshRenderers.Add(renderer);
+                    }
+                }
+            }
+
+            if (meshRenderers.Count == 0)
+            {
+                throw new Exception("No valid meshes found in USDZ file");
             }
 
             // Setup camera
