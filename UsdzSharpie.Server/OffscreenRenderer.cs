@@ -77,6 +77,7 @@ namespace UsdzSharpie.Server
             // Try loading USDZ file using UsdzReader first
             var meshRenderers = new List<MeshRenderer>();
             var textures = new HashSet<Texture>();
+            var boundingBox = new BoundingBox();
             bool usedAssimp = false;
 
             try
@@ -153,6 +154,14 @@ namespace UsdzSharpie.Server
                             }
 
                             meshRenderers.Add(renderer);
+
+                            // Update bounding box
+                            foreach (var vertex in usdcMesh.Vertices)
+                            {
+                                var worldPos = new Vector4(vertex.X, vertex.Y, vertex.Z, 1.0f);
+                                worldPos = renderer.Transform * worldPos;
+                                boundingBox.Expand(new Vector3(worldPos.X, worldPos.Y, worldPos.Z));
+                            }
                         }
                     }
                 }
@@ -198,6 +207,14 @@ namespace UsdzSharpie.Server
                         }
 
                         meshRenderers.Add(renderer);
+
+                        // Update bounding box
+                        foreach (var vertex in mesh.Vertices)
+                        {
+                            var worldPos = new Vector4(vertex.X, vertex.Y, vertex.Z, 1.0f);
+                            worldPos = transform * worldPos;
+                            boundingBox.Expand(new Vector3(worldPos.X, worldPos.Y, worldPos.Z));
+                        }
                     }
                 }
             }
@@ -207,14 +224,33 @@ namespace UsdzSharpie.Server
                 throw new Exception("No valid meshes found in USDZ file");
             }
 
+            // Calculate bounding box properties
+            var boundingBoxSize = boundingBox.GetSize();
+            var boundingBoxCenter = boundingBox.GetCenter();
+
+            // Calculate camera position relative to object size
+            // viewpoint.Position is interpreted as a multiplier of the bounding box size
+            var actualCameraPosition = boundingBoxCenter + new Vector3(
+                boundingBoxSize.X * viewpoint.Position.X,
+                boundingBoxSize.Y * viewpoint.Position.Y,
+                boundingBoxSize.Z * viewpoint.Position.Z
+            );
+
+            // If target is zero, use bounding box center as target
+            var actualTarget = viewpoint.Target == Vector3.Zero ? boundingBoxCenter : viewpoint.Target;
+
+            Console.WriteLine($"Bounding Box - Min: {boundingBox.Min}, Max: {boundingBox.Max}");
+            Console.WriteLine($"Bounding Box - Size: {boundingBoxSize}, Center: {boundingBoxCenter}");
+            Console.WriteLine($"Camera - Position Multiplier: {viewpoint.Position}, Actual Position: {actualCameraPosition}, Target: {actualTarget}");
+
             // Setup camera
             float aspectRatio = (float)width / height;
-            var camera = new Camera(viewpoint.Position, viewpoint.Target, aspectRatio, viewpoint.Fov);
+            var camera = new Camera(actualCameraPosition, actualTarget, aspectRatio, viewpoint.Fov);
 
             // Render
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
             GL.Viewport(0, 0, width, height);
-            GL.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+            GL.ClearColor(0.0f, 0.0f, 0.0f, 0.0f);
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             GL.Enable(EnableCap.DepthTest);
             GL.Enable(EnableCap.CullFace);
@@ -329,5 +365,41 @@ namespace UsdzSharpie.Server
         Png,
         Jpeg,
         Webp
+    }
+
+    public class BoundingBox
+    {
+        public Vector3 Min { get; set; }
+        public Vector3 Max { get; set; }
+
+        public BoundingBox()
+        {
+            Min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+        }
+
+        public void Expand(Vector3 point)
+        {
+            Min = new Vector3(
+                Math.Min(Min.X, point.X),
+                Math.Min(Min.Y, point.Y),
+                Math.Min(Min.Z, point.Z)
+            );
+            Max = new Vector3(
+                Math.Max(Max.X, point.X),
+                Math.Max(Max.Y, point.Y),
+                Math.Max(Max.Z, point.Z)
+            );
+        }
+
+        public Vector3 GetSize()
+        {
+            return Max - Min;
+        }
+
+        public Vector3 GetCenter()
+        {
+            return (Min + Max) * 0.5f;
+        }
     }
 }

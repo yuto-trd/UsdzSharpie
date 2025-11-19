@@ -158,9 +158,9 @@ app.MapGet("/", () => Results.Content(@"
         <label>Viewpoints (JSON):</label>
         <textarea id=""viewpoints"" rows=""8"">[
   {
-    ""positionX"": 3.0,
-    ""positionY"": 3.0,
-    ""positionZ"": 3.0,
+    ""positionX"": 1.0,
+    ""positionY"": 1.0,
+    ""positionZ"": 1.0,
     ""targetX"": 0.0,
     ""targetY"": 0.0,
     ""targetZ"": 0.0,
