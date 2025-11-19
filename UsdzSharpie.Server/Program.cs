@@ -23,7 +23,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapPost("/render", async ([FromForm] IFormFile usdzFile, [FromForm] string viewpointsJson, [FromForm] int width = 800, [FromForm] int height = 600, [FromForm] string format = "png", [FromForm] bool enableLighting = true) =>
+app.MapPost("/render", async ([FromForm] IFormFile usdzFile, [FromForm] string viewpointJson) =>
 {
     if (usdzFile == null || usdzFile.Length == 0)
     {
@@ -39,64 +39,54 @@ app.MapPost("/render", async ([FromForm] IFormFile usdzFile, [FromForm] string v
             await usdzFile.CopyToAsync(stream);
         }
 
-        // Parse viewpoints
-        CameraViewpoint[] viewpoints;
+        // Parse viewpoint
+        CameraViewpoint viewpoint;
         try
         {
-            var viewpointDtos = JsonSerializer.Deserialize<ViewpointDto[]>(viewpointsJson, JsonSerializerOptions.Web);
-            if (viewpointDtos == null || viewpointDtos.Length == 0)
+            var viewpointDto = JsonSerializer.Deserialize<ViewpointDto>(viewpointJson, JsonSerializerOptions.Web);
+            if (viewpointDto == null)
             {
-                viewpoints = new[]
+                viewpoint = new CameraViewpoint
                 {
-                    new CameraViewpoint
-                    {
-                        Position = new Vector3(3, 3, 3),
-                        Target = Vector3.Zero,
-                        Fov = 45.0f
-                    }
+                    Position = new Vector3(1, 1, 1),
+                    Target = Vector3.Zero,
+                    Fov = 45.0f,
+                    Width = 800,
+                    Height = 600,
+                    EnableLighting = true
                 };
             }
             else
             {
-                viewpoints = viewpointDtos.Select(v => new CameraViewpoint
+                viewpoint = new CameraViewpoint
                 {
-                    Position = new Vector3(v.PositionX, v.PositionY, v.PositionZ),
-                    Target = new Vector3(v.TargetX, v.TargetY, v.TargetZ),
-                    Fov = v.Fov
-                }).ToArray();
+                    Position = new Vector3(viewpointDto.PositionX, viewpointDto.PositionY, viewpointDto.PositionZ),
+                    Target = new Vector3(viewpointDto.TargetX, viewpointDto.TargetY, viewpointDto.TargetZ),
+                    Fov = viewpointDto.Fov,
+                    Width = viewpointDto.Width,
+                    Height = viewpointDto.Height,
+                    EnableLighting = viewpointDto.EnableLighting
+                };
             }
         }
         catch
         {
-            viewpoints = new[]
+            viewpoint = new CameraViewpoint
             {
-                new CameraViewpoint
-                {
-                    Position = new Vector3(3, 3, 3),
-                    Target = Vector3.Zero,
-                    Fov = 45.0f
-                }
+                Position = new Vector3(1, 1, 1),
+                Target = Vector3.Zero,
+                Fov = 45.0f,
+                Width = 800,
+                Height = 600,
+                EnableLighting = true
             };
         }
 
-        // Parse format
-        var imageFormat = format.ToLower() switch
-        {
-            "jpeg" or "jpg" => ImageFormat.Jpeg,
-            "webp" => ImageFormat.Webp,
-            _ => ImageFormat.Png
-        };
-
         // Render
-        var imageData = rendererService.Render(tempPath, viewpoints, width, height, imageFormat, enableLighting);
+        var imageData = rendererService.Render(tempPath, viewpoint);
 
         // Return image
-        var contentType = imageFormat switch
-        {
-            ImageFormat.Jpeg => "image/jpeg",
-            ImageFormat.Webp => "image/webp",
-            _ => "image/png"
-        };
+        var contentType = "image/png";
 
         return Results.File(imageData, contentType);
     }
@@ -137,36 +127,19 @@ app.MapGet("/", () => Results.Content(@"
         <label>USDZ File:</label>
         <input type=""file"" id=""usdzFile"" accept="".usdz"" required>
 
-        <label>Width:</label>
-        <input type=""number"" id=""width"" value=""800"" min=""1"">
-
-        <label>Height:</label>
-        <input type=""number"" id=""height"" value=""600"" min=""1"">
-
-        <label>Format:</label>
-        <select id=""format"">
-            <option value=""png"">PNG</option>
-            <option value=""jpeg"">JPEG</option>
-            <option value=""webp"">WebP</option>
-        </select>
-
-        <label>
-            <input type=""checkbox"" id=""enableLighting"" checked>
-            Enable Lighting (陰影あり)
-        </label>
-
-        <label>Viewpoints (JSON):</label>
-        <textarea id=""viewpoints"" rows=""8"">[
-  {
-    ""positionX"": 1.0,
-    ""positionY"": 1.0,
-    ""positionZ"": 1.0,
-    ""targetX"": 0.0,
-    ""targetY"": 0.0,
-    ""targetZ"": 0.0,
-    ""fov"": 45.0
-  }
-]</textarea>
+        <label>Viewpoint (JSON):</label>
+        <textarea id=""viewpoint"" rows=""12"">{
+  ""positionX"": 1.0,
+  ""positionY"": 1.0,
+  ""positionZ"": 1.0,
+  ""targetX"": 0.0,
+  ""targetY"": 0.0,
+  ""targetZ"": 0.0,
+  ""fov"": 45.0,
+  ""width"": 800,
+  ""height"": 600,
+  ""enableLighting"": true
+}</textarea>
 
         <button type=""submit"">Render</button>
     </form>
@@ -179,11 +152,7 @@ app.MapGet("/", () => Results.Content(@"
 
             const formData = new FormData();
             formData.append('usdzFile', document.getElementById('usdzFile').files[0]);
-            formData.append('width', document.getElementById('width').value);
-            formData.append('height', document.getElementById('height').value);
-            formData.append('format', document.getElementById('format').value);
-            formData.append('enableLighting', document.getElementById('enableLighting').checked);
-            formData.append('viewpointsJson', document.getElementById('viewpoints').value);
+            formData.append('viewpointJson', document.getElementById('viewpoint').value);
 
             const result = document.getElementById('result');
             result.innerHTML = '<p>Rendering...</p>';
@@ -221,4 +190,7 @@ public class ViewpointDto
     public float TargetY { get; set; }
     public float TargetZ { get; set; }
     public float Fov { get; set; } = 45.0f;
+    public int Width { get; set; } = 800;
+    public int Height { get; set; } = 600;
+    public bool EnableLighting { get; set; } = true;
 }

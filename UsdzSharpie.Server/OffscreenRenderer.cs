@@ -60,25 +60,17 @@ namespace UsdzSharpie.Server
             Console.WriteLine($"Offscreen renderer initialized: {width}x{height}");
         }
 
-        public byte[] RenderToImage(string usdzPath, CameraViewpoint[] viewpoints, ImageFormat format = ImageFormat.Png, bool enableLighting = true)
+        public byte[] RenderToImage(string usdzPath, CameraViewpoint viewpoint)
         {
             if (!isInitialized)
                 Initialize();
-
-            // For simplicity, render only the first viewpoint
-            // You can extend this to handle multiple viewpoints and return multiple images
-            var viewpoint = viewpoints.Length > 0 ? viewpoints[0] : new CameraViewpoint
-            {
-                Position = new Vector3(0.1f, 0.1f, 0.1f),
-                Target = Vector3.Zero,
-                Fov = 45.0f
-            };
 
             // Try loading USDZ file using UsdzReader first
             var meshRenderers = new List<MeshRenderer>();
             var textures = new HashSet<Texture>();
             var boundingBox = new BoundingBox();
             bool usedAssimp = false;
+            bool enableLighting = viewpoint.EnableLighting;
 
             try
             {
@@ -291,10 +283,10 @@ namespace UsdzSharpie.Server
             }
 
             // Encode image using SkiaSharp
-            return EncodeImage(pixels, width, height, format);
+            return EncodeImage(pixels, width, height);
         }
 
-        private byte[] EncodeImage(byte[] pixels, int width, int height, ImageFormat format)
+        private byte[] EncodeImage(byte[] pixels, int width, int height)
         {
             // Create a bitmap from the pixel data
             var imageInfo = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
@@ -316,13 +308,7 @@ namespace UsdzSharpie.Server
                     bitmap.InstallPixels(imageInfo, (IntPtr)ptr);
 
                     using var image = SKImage.FromBitmap(bitmap);
-                    using var data = format switch
-                    {
-                        ImageFormat.Png => image.Encode(SKEncodedImageFormat.Png, 100),
-                        ImageFormat.Jpeg => image.Encode(SKEncodedImageFormat.Jpeg, 90),
-                        ImageFormat.Webp => image.Encode(SKEncodedImageFormat.Webp, 90),
-                        _ => image.Encode(SKEncodedImageFormat.Png, 100)
-                    };
+                    using var data = image.Encode(SKEncodedImageFormat.Png, 100);
 
                     return data.ToArray();
                 }
@@ -358,13 +344,9 @@ namespace UsdzSharpie.Server
         public Vector3 Position { get; set; }
         public Vector3 Target { get; set; }
         public float Fov { get; set; } = 45.0f;
-    }
-
-    public enum ImageFormat
-    {
-        Png,
-        Jpeg,
-        Webp
+        public int Width { get; set; } = 800;
+        public int Height { get; set; } = 600;
+        public bool EnableLighting { get; set; } = true;
     }
 
     public class BoundingBox
