@@ -10,10 +10,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSingleton<RendererService>();
 
 var app = builder.Build();
-
-// Initialize OpenGL context at startup
 var rendererService = app.Services.GetRequiredService<RendererService>();
-rendererService.Initialize();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

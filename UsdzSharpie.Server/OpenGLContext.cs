@@ -11,23 +11,12 @@ namespace UsdzSharpie.Server
         private IntPtr buffer;
         private int width;
         private int height;
-        private static OpenGLContext? instance;
-        private static readonly object lockObject = new object();
+        private static bool isGLBindingsInitialized = false;
+        private static readonly object bindingsLockObject = new object();
 
-        public static OpenGLContext Instance
+        public OpenGLContext()
         {
-            get
-            {
-                lock (lockObject)
-                {
-                    if (instance == null)
-                    {
-                        instance = new OpenGLContext();
-                        instance.Initialize();
-                    }
-                    return instance;
-                }
-            }
+            Initialize();
         }
 
         private void Initialize()
@@ -58,14 +47,21 @@ namespace UsdzSharpie.Server
                 throw new Exception("Failed to make OSMesa context current");
             }
 
-            // Load OpenGL function pointers using OSMesa
-            GL.LoadBindings(new OSMesaProcLoader());
+            // Load OpenGL function pointers using OSMesa (only once)
+            lock (bindingsLockObject)
+            {
+                if (!isGLBindingsInitialized)
+                {
+                    GL.LoadBindings(new OSMesaProcLoader());
+                    isGLBindingsInitialized = true;
 
-            Console.WriteLine($"OSMesa Context initialized:");
-            Console.WriteLine($"  Vendor: {GL.GetString(StringName.Vendor)}");
-            Console.WriteLine($"  Renderer: {GL.GetString(StringName.Renderer)}");
-            Console.WriteLine($"  Version: {GL.GetString(StringName.Version)}");
-            Console.WriteLine($"  GLSL Version: {GL.GetString(StringName.ShadingLanguageVersion)}");
+                    Console.WriteLine($"OSMesa Context initialized:");
+                    Console.WriteLine($"  Vendor: {GL.GetString(StringName.Vendor)}");
+                    Console.WriteLine($"  Renderer: {GL.GetString(StringName.Renderer)}");
+                    Console.WriteLine($"  Version: {GL.GetString(StringName.Version)}");
+                    Console.WriteLine($"  GLSL Version: {GL.GetString(StringName.ShadingLanguageVersion)}");
+                }
+            }
         }
 
         public void MakeCurrent()

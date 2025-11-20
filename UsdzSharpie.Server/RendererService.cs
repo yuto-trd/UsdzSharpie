@@ -4,39 +4,14 @@ namespace UsdzSharpie.Server
 {
     public class RendererService
     {
-        private readonly object lockObject = new object();
-        private bool isInitialized = false;
-
-        public void Initialize()
-        {
-            lock (lockObject)
-            {
-                if (!isInitialized)
-                {
-                    // Initialize OpenGL context
-                    var context = OpenGLContext.Instance;
-                    context.MakeCurrent();
-                    isInitialized = true;
-                    Console.WriteLine("RendererService initialized");
-                }
-            }
-        }
-
         public byte[] Render(string usdzPath, CameraViewpoint viewpoint)
         {
-            lock (lockObject)
-            {
-                if (!isInitialized)
-                {
-                    throw new InvalidOperationException("RendererService not initialized");
-                }
+            // Create a new OpenGL context for each request
+            using var context = new OpenGLContext();
+            context.MakeCurrent();
 
-                // Make sure OpenGL context is current for this thread
-                OpenGLContext.Instance.MakeCurrent();
-
-                using var renderer = new OffscreenRenderer(viewpoint.Width, viewpoint.Height);
-                return renderer.RenderToImage(usdzPath, viewpoint);
-            }
+            using var renderer = new OffscreenRenderer(viewpoint.Width, viewpoint.Height);
+            return renderer.RenderToImage(usdzPath, viewpoint);
         }
     }
 }
