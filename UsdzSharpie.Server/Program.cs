@@ -142,6 +142,49 @@ app.MapPost("/convert-to-obj", async ([FromForm] IFormFile usdzFile) =>
 .WithName("ConvertToObj")
 .DisableAntiforgery();
 
+app.MapPost("/convert-to-gltf", async ([FromForm] IFormFile usdzFile) =>
+{
+    if (usdzFile == null || usdzFile.Length == 0)
+    {
+        return Results.BadRequest("USDZ file is required");
+    }
+
+    // Save USDZ file temporarily
+    var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".usdz");
+    try
+    {
+        using (var stream = File.Create(tempPath))
+        {
+            await usdzFile.CopyToAsync(stream);
+        }
+
+        // Load USDZ with Assimp
+        using var loader = new AssimpLoader();
+        var scene = loader.LoadUsdz(tempPath);
+
+        // Convert to glTF/bin/textures ZIP
+        var modelName = Path.GetFileNameWithoutExtension(usdzFile.FileName) ?? "model";
+        var zipData = GltfExporter.ExportToZip(scene, modelName);
+
+        // Return ZIP file
+        return Results.File(zipData, "application/zip", $"{modelName}.zip");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to convert USDZ to glTF: {ex.Message}");
+    }
+    finally
+    {
+        // Clean up temp file
+        if (File.Exists(tempPath))
+        {
+            File.Delete(tempPath);
+        }
+    }
+})
+.WithName("ConvertToGltf")
+.DisableAntiforgery();
+
 app.MapGet("/", () => Results.Content(@"
 <!DOCTYPE html>
 <html>
@@ -163,7 +206,7 @@ app.MapGet("/", () => Results.Content(@"
 </head>
 <body>
     <h1>USDZ Converter & Renderer Server</h1>
-    <p>Upload a USDZ file to either convert it to OBJ format or render images from camera viewpoints.</p>
+    <p>Upload a USDZ file to convert it to OBJ or glTF format, or render images from camera viewpoints.</p>
 
     <div class=""section"">
         <h2>Convert to OBJ</h2>
@@ -174,6 +217,17 @@ app.MapGet("/", () => Results.Content(@"
             <button type=""submit"">Convert to OBJ</button>
         </form>
         <div id=""convertResult"" class=""result"" style=""display: none;""></div>
+    </div>
+
+    <div class=""section"">
+        <h2>Convert to glTF</h2>
+        <p>Convert USDZ to glTF 2.0 format with textures (as ZIP file)</p>
+        <form id=""convertGltfForm"">
+            <label>USDZ File:</label>
+            <input type=""file"" id=""convertGltfUsdzFile"" accept="".usdz"" required>
+            <button type=""submit"">Convert to glTF</button>
+        </form>
+        <div id=""convertGltfResult"" class=""result"" style=""display: none;""></div>
     </div>
 
     <div class=""section"">
@@ -215,6 +269,38 @@ app.MapGet("/", () => Results.Content(@"
 
             try {
                 const response = await fetch('/convert-to-obj', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const filename = response.headers.get('Content-Disposition')?.match(/filename=""?([^""]+)""?/)?.[1] || 'model.zip';
+
+                    result.innerHTML = '<p style=""color: green;"">Conversion successful!</p>' +
+                                      '<a href=""' + url + '"" download=""' + filename + '"" style=""display: inline-block; margin-top: 10px; padding: 10px 20px; background: #28a745; color: white; text-decoration: none; border-radius: 4px;"">Download ZIP</a>';
+                } else {
+                    const text = await response.text();
+                    result.innerHTML = '<p style=""color: red;"">Error: ' + text + '</p>';
+                }
+            } catch (error) {
+                result.innerHTML = '<p style=""color: red;"">Error: ' + error.message + '</p>';
+            }
+        };
+
+        document.getElementById('convertGltfForm').onsubmit = async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData();
+            formData.append('usdzFile', document.getElementById('convertGltfUsdzFile').files[0]);
+
+            const result = document.getElementById('convertGltfResult');
+            result.style.display = 'block';
+            result.innerHTML = '<p>Converting...</p>';
+
+            try {
+                const response = await fetch('/convert-to-gltf', {
                     method: 'POST',
                     body: formData
                 });
