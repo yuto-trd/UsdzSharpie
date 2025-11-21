@@ -13,6 +13,58 @@ namespace UsdzSharpie.Server
 {
     public class GltfExporter
     {
+        public static byte[] ExportToGlb(AssimpScene scene, string modelName = "model")
+        {
+            // Generate binary buffer with embedded images
+            var bufferData = GenerateBufferDataWithImages(scene, out var meshInfos, out var imageInfos);
+
+            // Generate glTF JSON for GLB (no external URIs)
+            var gltfJson = GenerateGltfJsonForGlb(scene, bufferData.Length, meshInfos, imageInfos);
+
+            // Create GLB binary file
+            using var glbStream = new MemoryStream();
+            using var writer = new BinaryWriter(glbStream);
+
+            // GLB Header (12 bytes)
+            writer.Write(0x46546C67); // magic "glTF"
+            writer.Write(2);           // version 2
+
+            // We'll write the length later after we know the total size
+            var lengthPosition = glbStream.Position;
+            writer.Write(0); // placeholder for total length
+
+            // JSON Chunk
+            var jsonBytes = Encoding.UTF8.GetBytes(gltfJson);
+            var jsonLength = jsonBytes.Length;
+
+            // Pad to 4-byte alignment with spaces (0x20)
+            var jsonPadding = (4 - (jsonLength % 4)) % 4;
+            var paddedJsonLength = jsonLength + jsonPadding;
+
+            writer.Write(paddedJsonLength);    // JSON chunk length
+            writer.Write(0x4E4F534A);          // chunk type "JSON"
+            writer.Write(jsonBytes);
+            for (int i = 0; i < jsonPadding; i++)
+                writer.Write((byte)0x20); // space padding
+
+            // BIN Chunk
+            var binPadding = (4 - (bufferData.Length % 4)) % 4;
+            var paddedBinLength = bufferData.Length + binPadding;
+
+            writer.Write(paddedBinLength);     // BIN chunk length
+            writer.Write(0x004E4942);          // chunk type "BIN\0"
+            writer.Write(bufferData);
+            for (int i = 0; i < binPadding; i++)
+                writer.Write((byte)0); // zero padding
+
+            // Write total length
+            var totalLength = (int)glbStream.Position;
+            glbStream.Position = lengthPosition;
+            writer.Write(totalLength);
+
+            return glbStream.ToArray();
+        }
+
         public static byte[] ExportToZip(AssimpScene scene, string modelName = "model")
         {
             using var memoryStream = new MemoryStream();
@@ -176,6 +228,391 @@ namespace UsdzSharpie.Server
             }
 
             return imageInfos;
+        }
+
+        private static byte[] GenerateBufferDataWithImages(AssimpScene scene, out List<MeshInfo> meshInfos, out List<ImageInfoGlb> imageInfos)
+        {
+            using var bufferStream = new MemoryStream();
+            using var writer = new BinaryWriter(bufferStream);
+
+            meshInfos = new List<MeshInfo>();
+            var meshes = scene.GetAllMeshes().ToList();
+
+            // Write mesh data first
+            foreach (var (mesh, transform) in meshes)
+            {
+                var meshInfo = new MeshInfo();
+
+                // Write vertices
+                meshInfo.PositionOffset = (int)bufferStream.Position;
+                foreach (var vertex in mesh.Vertices)
+                {
+                    var transformed = Vector3.TransformPosition(vertex, transform);
+                    writer.Write(transformed.X);
+                    writer.Write(transformed.Y);
+                    writer.Write(transformed.Z);
+                }
+                meshInfo.PositionCount = mesh.Vertices.Length;
+
+                // Align to 4 bytes
+                while (bufferStream.Position % 4 != 0)
+                    writer.Write((byte)0);
+
+                // Write normals
+                if (mesh.Normals.Length > 0)
+                {
+                    meshInfo.NormalOffset = (int)bufferStream.Position;
+                    var normalMatrix = transform.ClearTranslation();
+                    foreach (var normal in mesh.Normals)
+                    {
+                        var transformed = Vector3.TransformNormal(normal, normalMatrix);
+                        transformed = Vector3.Normalize(transformed);
+                        writer.Write(transformed.X);
+                        writer.Write(transformed.Y);
+                        writer.Write(transformed.Z);
+                    }
+                    meshInfo.NormalCount = mesh.Normals.Length;
+
+                    // Align to 4 bytes
+                    while (bufferStream.Position % 4 != 0)
+                        writer.Write((byte)0);
+                }
+
+                // Write texture coordinates
+                if (mesh.TexCoords.Length > 0)
+                {
+                    meshInfo.TexCoordOffset = (int)bufferStream.Position;
+                    foreach (var texCoord in mesh.TexCoords)
+                    {
+                        writer.Write(texCoord.X);
+                        writer.Write(texCoord.Y);
+                    }
+                    meshInfo.TexCoordCount = mesh.TexCoords.Length;
+
+                    // Align to 4 bytes
+                    while (bufferStream.Position % 4 != 0)
+                        writer.Write((byte)0);
+                }
+
+                // Write indices
+                meshInfo.IndexOffset = (int)bufferStream.Position;
+                foreach (var index in mesh.Indices)
+                {
+                    writer.Write((ushort)index);
+                }
+                meshInfo.IndexCount = mesh.Indices.Length;
+
+                // Align to 4 bytes
+                while (bufferStream.Position % 4 != 0)
+                    writer.Write((byte)0);
+
+                // Calculate bounding box
+                meshInfo.MinPosition = new Vector3(float.MaxValue);
+                meshInfo.MaxPosition = new Vector3(float.MinValue);
+                foreach (var vertex in mesh.Vertices)
+                {
+                    var transformed = Vector3.TransformPosition(vertex, transform);
+                    meshInfo.MinPosition = Vector3.ComponentMin(meshInfo.MinPosition, transformed);
+                    meshInfo.MaxPosition = Vector3.ComponentMax(meshInfo.MaxPosition, transformed);
+                }
+
+                // Store material index
+                meshInfo.MaterialIndex = scene.Meshes.IndexOf(mesh);
+
+                meshInfos.Add(meshInfo);
+            }
+
+            // Now write image data
+            imageInfos = new List<ImageInfoGlb>();
+            var textureMap = new Dictionary<string, int>();
+
+            for (int i = 0; i < scene.Materials.Count; i++)
+            {
+                var material = scene.Materials[i];
+                if (material.DiffuseTextureData != null && material.DiffuseTexturePath != null)
+                {
+                    if (!textureMap.ContainsKey(material.DiffuseTexturePath))
+                    {
+                        var extension = Path.GetExtension(material.DiffuseTexturePath).ToLowerInvariant();
+                        var mimeType = extension switch
+                        {
+                            ".png" => "image/png",
+                            ".jpg" or ".jpeg" => "image/jpeg",
+                            _ => "image/png"
+                        };
+
+                        var imageOffset = (int)bufferStream.Position;
+                        writer.Write(material.DiffuseTextureData);
+                        var imageLength = material.DiffuseTextureData.Length;
+
+                        // Align to 4 bytes
+                        while (bufferStream.Position % 4 != 0)
+                            writer.Write((byte)0);
+
+                        imageInfos.Add(new ImageInfoGlb
+                        {
+                            BufferViewOffset = imageOffset,
+                            BufferViewLength = imageLength,
+                            MimeType = mimeType
+                        });
+
+                        textureMap[material.DiffuseTexturePath] = imageInfos.Count - 1;
+                    }
+                }
+            }
+
+            return bufferStream.ToArray();
+        }
+
+        private static string GenerateGltfJsonForGlb(AssimpScene scene, int bufferLength,
+            List<MeshInfo> meshInfos, List<ImageInfoGlb> imageInfos)
+        {
+            var gltf = new GltfRoot
+            {
+                Asset = new GltfAsset
+                {
+                    Version = "2.0",
+                    Generator = "UsdzSharpie USDZ to GLB Converter"
+                }
+            };
+
+            // Single buffer (embedded in GLB)
+            gltf.Buffers.Add(new GltfBuffer
+            {
+                ByteLength = bufferLength
+            });
+
+            // BufferViews and Accessors for mesh data
+            int accessorIndex = 0;
+            var meshGltfInfos = new List<MeshGltfInfo>();
+
+            foreach (var meshInfo in meshInfos)
+            {
+                var meshGltfInfo = new MeshGltfInfo();
+
+                // Position buffer view and accessor
+                var positionBufferView = gltf.BufferViews.Count;
+                gltf.BufferViews.Add(new GltfBufferView
+                {
+                    Buffer = 0,
+                    ByteOffset = meshInfo.PositionOffset,
+                    ByteLength = meshInfo.PositionCount * 12,
+                    Target = 34962
+                });
+
+                meshGltfInfo.PositionAccessor = accessorIndex++;
+                gltf.Accessors.Add(new GltfAccessor
+                {
+                    BufferView = positionBufferView,
+                    ComponentType = 5126,
+                    Count = meshInfo.PositionCount,
+                    Type = "VEC3",
+                    Min = new[] { meshInfo.MinPosition.X, meshInfo.MinPosition.Y, meshInfo.MinPosition.Z },
+                    Max = new[] { meshInfo.MaxPosition.X, meshInfo.MaxPosition.Y, meshInfo.MaxPosition.Z }
+                });
+
+                // Normal buffer view and accessor
+                if (meshInfo.NormalCount > 0)
+                {
+                    var normalBufferView = gltf.BufferViews.Count;
+                    gltf.BufferViews.Add(new GltfBufferView
+                    {
+                        Buffer = 0,
+                        ByteOffset = meshInfo.NormalOffset,
+                        ByteLength = meshInfo.NormalCount * 12,
+                        Target = 34962
+                    });
+
+                    meshGltfInfo.NormalAccessor = accessorIndex++;
+                    gltf.Accessors.Add(new GltfAccessor
+                    {
+                        BufferView = normalBufferView,
+                        ComponentType = 5126,
+                        Count = meshInfo.NormalCount,
+                        Type = "VEC3"
+                    });
+                }
+
+                // TexCoord buffer view and accessor
+                if (meshInfo.TexCoordCount > 0)
+                {
+                    var texCoordBufferView = gltf.BufferViews.Count;
+                    gltf.BufferViews.Add(new GltfBufferView
+                    {
+                        Buffer = 0,
+                        ByteOffset = meshInfo.TexCoordOffset,
+                        ByteLength = meshInfo.TexCoordCount * 8,
+                        Target = 34962
+                    });
+
+                    meshGltfInfo.TexCoordAccessor = accessorIndex++;
+                    gltf.Accessors.Add(new GltfAccessor
+                    {
+                        BufferView = texCoordBufferView,
+                        ComponentType = 5126,
+                        Count = meshInfo.TexCoordCount,
+                        Type = "VEC2"
+                    });
+                }
+
+                // Index buffer view and accessor
+                var indexBufferView = gltf.BufferViews.Count;
+                gltf.BufferViews.Add(new GltfBufferView
+                {
+                    Buffer = 0,
+                    ByteOffset = meshInfo.IndexOffset,
+                    ByteLength = meshInfo.IndexCount * 2,
+                    Target = 34963
+                });
+
+                meshGltfInfo.IndexAccessor = accessorIndex++;
+                gltf.Accessors.Add(new GltfAccessor
+                {
+                    BufferView = indexBufferView,
+                    ComponentType = 5123,
+                    Count = meshInfo.IndexCount,
+                    Type = "SCALAR"
+                });
+
+                meshGltfInfo.MaterialIndex = meshInfo.MaterialIndex;
+                meshGltfInfos.Add(meshGltfInfo);
+            }
+
+            // BufferViews for images
+            foreach (var imageInfo in imageInfos)
+            {
+                imageInfo.BufferViewIndex = gltf.BufferViews.Count;
+                gltf.BufferViews.Add(new GltfBufferView
+                {
+                    Buffer = 0,
+                    ByteOffset = imageInfo.BufferViewOffset,
+                    ByteLength = imageInfo.BufferViewLength
+                });
+            }
+
+            // Images (referencing buffer views)
+            foreach (var imageInfo in imageInfos)
+            {
+                gltf.Images.Add(new GltfImage
+                {
+                    BufferView = imageInfo.BufferViewIndex,
+                    MimeType = imageInfo.MimeType
+                });
+            }
+
+            // Textures
+            for (int i = 0; i < imageInfos.Count; i++)
+            {
+                gltf.Textures.Add(new GltfTexture
+                {
+                    Source = i
+                });
+            }
+
+            // Materials
+            var textureMap = new Dictionary<string, int>();
+            for (int i = 0; i < scene.Materials.Count; i++)
+            {
+                var material = scene.Materials[i];
+                var gltfMaterial = new GltfMaterial
+                {
+                    Name = $"material_{i}",
+                    PbrMetallicRoughness = new GltfPbrMetallicRoughness
+                    {
+                        BaseColorFactor = new[]
+                        {
+                            material.DiffuseColor.X,
+                            material.DiffuseColor.Y,
+                            material.DiffuseColor.Z,
+                            1.0f
+                        },
+                        MetallicFactor = 0.0f,
+                        RoughnessFactor = 1.0f
+                    }
+                };
+
+                // Add texture if available
+                if (material.DiffuseTexturePath != null && !string.IsNullOrEmpty(material.DiffuseTexturePath))
+                {
+                    if (!textureMap.ContainsKey(material.DiffuseTexturePath))
+                    {
+                        textureMap[material.DiffuseTexturePath] = textureMap.Count;
+                    }
+                    var textureIndex = textureMap[material.DiffuseTexturePath];
+
+                    if (textureIndex < gltf.Textures.Count)
+                    {
+                        gltfMaterial.PbrMetallicRoughness.BaseColorTexture = new GltfTextureInfo
+                        {
+                            Index = textureIndex
+                        };
+                    }
+                }
+
+                gltf.Materials.Add(gltfMaterial);
+            }
+
+            // Meshes
+            for (int i = 0; i < meshGltfInfos.Count; i++)
+            {
+                var meshGltfInfo = meshGltfInfos[i];
+                var primitive = new GltfPrimitive
+                {
+                    Attributes = new Dictionary<string, int>
+                    {
+                        ["POSITION"] = meshGltfInfo.PositionAccessor
+                    },
+                    Indices = meshGltfInfo.IndexAccessor,
+                    Mode = 4
+                };
+
+                if (meshGltfInfo.NormalAccessor >= 0)
+                {
+                    primitive.Attributes["NORMAL"] = meshGltfInfo.NormalAccessor;
+                }
+
+                if (meshGltfInfo.TexCoordAccessor >= 0)
+                {
+                    primitive.Attributes["TEXCOORD_0"] = meshGltfInfo.TexCoordAccessor;
+                }
+
+                if (meshGltfInfo.MaterialIndex >= 0 && meshGltfInfo.MaterialIndex < gltf.Materials.Count)
+                {
+                    primitive.Material = meshGltfInfo.MaterialIndex;
+                }
+
+                gltf.Meshes.Add(new GltfMesh
+                {
+                    Name = $"mesh_{i}",
+                    Primitives = new List<GltfPrimitive> { primitive }
+                });
+            }
+
+            // Nodes
+            for (int i = 0; i < gltf.Meshes.Count; i++)
+            {
+                gltf.Nodes.Add(new GltfNode
+                {
+                    Mesh = i,
+                    Name = $"node_{i}"
+                });
+            }
+
+            // Scene
+            gltf.Scenes.Add(new GltfScene
+            {
+                Name = "Scene",
+                Nodes = Enumerable.Range(0, gltf.Nodes.Count).ToList()
+            });
+            gltf.Scene = 0;
+
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = false, // GLB should be compact
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+
+            return JsonSerializer.Serialize(gltf, options);
         }
 
         private static string GenerateGltfJson(AssimpScene scene, string modelName, int bufferLength,
@@ -447,6 +884,14 @@ namespace UsdzSharpie.Server
             public string Uri { get; set; } = "";
             public string MimeType { get; set; } = "";
         }
+
+        private class ImageInfoGlb
+        {
+            public int BufferViewOffset { get; set; }
+            public int BufferViewLength { get; set; }
+            public int BufferViewIndex { get; set; }
+            public string MimeType { get; set; } = "";
+        }
     }
 
     // glTF 2.0 JSON structure classes
@@ -583,6 +1028,9 @@ namespace UsdzSharpie.Server
     {
         [JsonPropertyName("uri")]
         public string? Uri { get; set; }
+
+        [JsonPropertyName("bufferView")]
+        public int? BufferView { get; set; }
 
         [JsonPropertyName("mimeType")]
         public string? MimeType { get; set; }

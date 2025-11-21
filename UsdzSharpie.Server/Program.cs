@@ -185,6 +185,49 @@ app.MapPost("/convert-to-gltf", async ([FromForm] IFormFile usdzFile) =>
 .WithName("ConvertToGltf")
 .DisableAntiforgery();
 
+app.MapPost("/convert-to-glb", async ([FromForm] IFormFile usdzFile) =>
+{
+    if (usdzFile == null || usdzFile.Length == 0)
+    {
+        return Results.BadRequest("USDZ file is required");
+    }
+
+    // Save USDZ file temporarily
+    var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".usdz");
+    try
+    {
+        using (var stream = File.Create(tempPath))
+        {
+            await usdzFile.CopyToAsync(stream);
+        }
+
+        // Load USDZ with Assimp
+        using var loader = new AssimpLoader();
+        var scene = loader.LoadUsdz(tempPath);
+
+        // Convert to GLB (single binary file)
+        var modelName = Path.GetFileNameWithoutExtension(usdzFile.FileName) ?? "model";
+        var glbData = GltfExporter.ExportToGlb(scene, modelName);
+
+        // Return GLB file
+        return Results.File(glbData, "model/gltf-binary", $"{modelName}.glb");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to convert USDZ to GLB: {ex.Message}");
+    }
+    finally
+    {
+        // Clean up temp file
+        if (File.Exists(tempPath))
+        {
+            File.Delete(tempPath);
+        }
+    }
+})
+.WithName("ConvertToGlb")
+.DisableAntiforgery();
+
 app.MapGet("/", () => Results.Content(@"
 <!DOCTYPE html>
 <html>
@@ -228,6 +271,17 @@ app.MapGet("/", () => Results.Content(@"
             <button type=""submit"">Convert to glTF</button>
         </form>
         <div id=""convertGltfResult"" class=""result"" style=""display: none;""></div>
+    </div>
+
+    <div class=""section"">
+        <h2>Convert to GLB</h2>
+        <p>Convert USDZ to GLB (binary glTF) format - single file with embedded textures</p>
+        <form id=""convertGlbForm"">
+            <label>USDZ File:</label>
+            <input type=""file"" id=""convertGlbUsdzFile"" accept="".usdz"" required>
+            <button type=""submit"">Convert to GLB</button>
+        </form>
+        <div id=""convertGlbResult"" class=""result"" style=""display: none;""></div>
     </div>
 
     <div class=""section"">
@@ -312,6 +366,38 @@ app.MapGet("/", () => Results.Content(@"
 
                     result.innerHTML = '<p style=""color: green;"">Conversion successful!</p>' +
                                       '<a href=""' + url + '"" download=""' + filename + '"" style=""display: inline-block; margin-top: 10px; padding: 10px 20px; background: #28a745; color: white; text-decoration: none; border-radius: 4px;"">Download ZIP</a>';
+                } else {
+                    const text = await response.text();
+                    result.innerHTML = '<p style=""color: red;"">Error: ' + text + '</p>';
+                }
+            } catch (error) {
+                result.innerHTML = '<p style=""color: red;"">Error: ' + error.message + '</p>';
+            }
+        };
+
+        document.getElementById('convertGlbForm').onsubmit = async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData();
+            formData.append('usdzFile', document.getElementById('convertGlbUsdzFile').files[0]);
+
+            const result = document.getElementById('convertGlbResult');
+            result.style.display = 'block';
+            result.innerHTML = '<p>Converting...</p>';
+
+            try {
+                const response = await fetch('/convert-to-glb', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const filename = response.headers.get('Content-Disposition')?.match(/filename=""?([^""]+)""?/)?.[1] || 'model.glb';
+
+                    result.innerHTML = '<p style=""color: green;"">Conversion successful!</p>' +
+                                      '<a href=""' + url + '"" download=""' + filename + '"" style=""display: inline-block; margin-top: 10px; padding: 10px 20px; background: #28a745; color: white; text-decoration: none; border-radius: 4px;"">Download GLB</a>';
                 } else {
                     const text = await response.text();
                     result.innerHTML = '<p style=""color: red;"">Error: ' + text + '</p>';
